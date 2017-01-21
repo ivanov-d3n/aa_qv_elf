@@ -1,0 +1,76 @@
+unit qvest;     
+interface
+uses SysUtils, Classes;
+
+begin
+{
+  Engine.MoveTo(10388.11, 15990.64, 463.80);
+  if (Engine.QuestStage(16) = 0) then Engine.BeginQuest(16 , Npcs.GetNear('Лассер'));   // Если квест доступе, берем его
+  Engine.MoveTo(10383.42, 15993.25, 460.00);
+  Engine.MoveTo(10375.86, 16000.31, 457.93);
+  Engine.MoveTo(10369.88, 16007.78, 457.83);
+  Engine.MoveTo(10366.77, 16012.56, 457.83);
+  Engine.MoveTo(10365.17, 16015.27, 457.78);
+  if (Engine.QuestStage(16) = 2) then Engine.EndQuest(16 , Npcs.GetNear('Инструктор Харвен'));   // Если квест готов к сдаче, то сдаем его
+  //1q
+  }{
+  Engine.MoveTo(10365.85, 16017.30, 457.73);
+  Engine.MoveTo(10360.29, 16026.13, 456.58);
+  Engine.MoveTo(10351.65, 16032.57, 455.84);
+  Engine.MoveTo(10349.46, 16033.41, 455.81);
+  
+  
+  if (Engine.QuestStage(10) = 0) then Engine.BeginQuest(10 , Npcs.GetNear('Наэн'));
+  // взял квест
+  Engine.MoveTo(10346.20, 16031.21, 455.42);
+  Engine.MoveTo(10340.37, 16029.34, 455.61);
+  Engine.MoveTo(10331.17, 16026.03, 455.07);
+  Engine.MoveTo(10324.29, 16019.93, 454.80);
+  Engine.MoveTo(10315.97, 16010.64, 452.14);
+  Engine.MoveTo(10308.99, 16004.48, 450.69);
+  Engine.MoveTo(10301.45, 15999.95, 449.29);
+  Engine.MoveTo(10294.57, 15996.09, 448.42);
+  Engine.MoveTo(10293.30, 15989.79, 448.99);
+  Engine.MoveTo(10294.52, 15983.67, 449.26);
+
+  //тут будит бот фармить)
+  //'Древесник' убить 3 шт
+  Engine.MoveTo(10280.94, 15976.58, 447.44);
+  Engine.MoveTo(10271.74, 15979.20, 447.15);
+  Engine.MoveTo(10263.31, 15981.06, 446.18);
+  Engine.MoveTo(10254.65, 15978.85, 444.10);
+  Engine.MoveTo(10254.65, 15978.85, 444.10);
+  Engine.MoveTo(10253.79, 15982.20, 443.68);
+  Engine.MoveTo(10253.79, 15982.20, 443.68);
+  Engine.MoveTo(10246.66, 15978.20, 441.67);
+  Engine.MoveTo(10233.40, 15972.74, 441.10);
+  Engine.MoveTo(10232.58, 15970.08, 441.27);
+ }{ 
+  if (Engine.QuestStage(10) = 2) then Engine.EndQuest(10 , Npcs.GetNear('Увен'));
+  //сдал квест
+  }{
+  delay(1000*2);
+  if (Engine.QuestStage(11) = 0) then Engine.BeginQuest(11 , Npcs.GetNear('Увен'));
+  //взял
+  delay(1000*2);
+  Engine.MoveTo(10235.35, 15964.51, 439.74);
+  Engine.MoveTo(10238.68, 15947.71, 435.23);
+  Engine.MoveTo(10240.61, 15940.74, 434.97);
+  Engine.MoveTo(10239.84, 15925.00, 431.46);
+  Engine.MoveTo(10233.56, 15910.66, 427.25);
+  Engine.MoveTo(10234.34, 15898.87, 427.30);
+  Engine.MoveTo(10218.35, 15889.59, 424.68);
+  Engine.MoveTo(10213.89, 15883.64, 426.07);
+  Engine.MoveTo(10208.26, 15879.79, 426.70);
+  Engine.MoveTo(10200.44, 15874.46, 423.56);
+  Engine.MoveTo(10184.33, 15871.95, 419.87);
+  Engine.MoveTo(10168.66, 15871.79, 418.35);
+  }
+  //на месте убить 3 'Small Deer' 'Молодая косуля'
+  
+  
+  
+  
+  
+  
+end.

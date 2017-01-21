@@ -1,0 +1,2365 @@
+unit farm;     
+interface
+uses SysUtils, Classes;
+procedure Main();//процедуры доступные из вне
+
+
+
+
+
+implementation //реализовать
+uses Sysutils, Classes; 
+const        { УКАЗЫВАЕМ НЕОБХОДИМЫЕ ПАРАМЕТРЫ }
+
+  debug_logs = true;         // Отладочное логирование (включать если думаете, что нашли баг - чтобы сообщить что было в логах)
+  start_delay = 1;            // Задержка в секундах при старте скрипта (для прорисовки)
+  
+     { настройка зон, чуть ниже еще нужно будет указать координаты основных точек }
+  max_range = 155;            // Максимальный радиус поиска цели (реккомендую ставить х2 от радиуса спота)
+  range_spot = 88;            // Радиус спота
+  range_town = 22;            // Радиус города
+  range_nui = 11;             // Радиус статуи Нуи (возможно нужно уменьшить, если они очень близко к споту\городу)
+  range_attack = 19;          // Дистанция ведения боя (не реккомендуется ставить меньше 3)
+  Z_limit = 11;               // Ограничение по Z координате при выборе моба
+  
+    { городские функции - true: функция включена; false: функция выключена }
+  selling_active = false;     // Функция продажи хлама в магазин
+  buy_moonstone = false;      // Функция закупки камней новолуния у кузнецца
+  moonstones_count = 11;      // Кол-во камней новолуния, до которого бот будет докупать их 
+  repairing_active = false;   // Функция починки брони
+  repair_all = true;          // Если true - будет чинить все разом, false - только поломанные вещи по 1му итему
+  sending_active = false;     // Функция отправки почты  
+  wh_nickname = 'wh_name';    // Ник, куда отправлять почту
+  storing_active = false;     // Функция складывания хлама в ВХ
+  
+     { условия возврата }
+  min_lvl = 1;              // Диапазон лвлов, в которых будет работать бот (на случай кача)
+  max_lvl = 55;             // [min_lvl,max_lvl]
+  prayer_mode = false;      // Функция восстановления опыта после смерти от мобов (Молитва)
+  prayer_LP = 111;          // Минимальное кол-во ОР, при которых бот будет молиться после смерти
+  
+  gm_runaway = false;       // При появлении ГМа бот будет убегать в город и ждать
+  gm_logout = true;         // При появлении ГМа бот будет ухожить в релог на время "gm_delay"
+  char_num: integer = 1;    // Номер чара, на которого нужно заходить после релога
+  gm_stopacc = false;       // При появлении ГМа бот будет вырубать аккаунт
+  gm_afk = false;           // Притворятся афк при виде ГМа
+  gm_afk_time = 3;          // Время в сек которое бот будет притворятся афк
+  cancel_suspected = false; // Снятие дебафа Suspected User (ПОКА ЧТО НЕ ВКЛЮЧАТЬ - НЕ ДОДЕЛАНО)
+  
+  teleport_mode = false;    // Функция телепортации в случае если бот потеряется {true|false}
+  gold_need_in_town = 70;   // Кол-во золота, при котором будет бежать в город (целое число - золото)
+  gold_to_send = 50;        // Кол-во золота для отправки (делайте чуть меньше, оставляйте деньги на ремонт)
+  min_durability = 10;      // Минимальная прочность вещи (не в %ах), при которой будет чиниться
+  slots_need_in_town = 1;   // Если кол-во свободных слотов будет меньше указанного, то бот бот побежит в город
+  resurrect_delay = 22;     // Ожидание после воскрешения при смерти от игрока (в секундах)
+  gm_delay = 1800;          // Время (в секундах), которое бот будет пережидать при появлении ГМа (в городе или в релоге)
+  tp_delay = 7;             // Время (в секундах), которое нужно для прогрузки после ТП
+  delay_between_tp = 600;   // Время (в секундах) между телепортами (от крота, сейчас вроде ~10 мин нужно ждать)
+  
+     { поведение в бою }
+  pvp_module = false;          // PVP активность (в случае проблем с этой функцией - отключите)
+  pvp_range = 20;             // Радиус поиска врагов
+  fight_type_range = true;   // Тип боя - дальний: range
+  fight_type_melee = false;    // Тип боя - ближний: melee
+  return_to_spot_centr_mode = false;  // Если кончились мобы на споте, то возвращаться в его центр
+  
+  potion_hp_name = 'Средний флакон с целебным зельем';    // Название зелья HP, которое должен пить бот
+  potion_mp_name = 'Средний флакон с зельем маны';        // Название зелья MP, которое должен пить бот
+  potion_min_hp = 22;         // % HP, при котором бот будет пить зелье HP
+  potion_min_mp = 11;         // % MP, при котором бот будет пить зелье MP
+
+  use_items_to_buff = true;   // Использование еды\свитков для бафа (список настраивается чуть ниже)
+  
+  music_min_hp = 47;          // % HP, при котором бот будет играть на музыкальном инструменте
+  music_min_mp = 47;          // % MP, при котором бот будет играть на музыкальном инструменте
+  music_max_hp = 53;          // % HP, при котором бот перестанет регениться и вернется к фарму
+  music_max_mp = 53;          // % MP, при котором бот перестанет регениться и вернется к фарму
+  
+  time_to_ignore_mob = 11;    // Если ХП цели не убывает больше указанного значения (в секундах), то смена цели
+  time_to_lag_restart = 77;   // Если чар почти не движется в течение указанного кол-ва секунд, то скрипт перезапустится
+
+  skill_heal_witchcraft = 85;           // Комбо Сокрушение разума + Хватка земли (Гипноз)
+  witchcraft_target_min_hp = 33;        // Мин % ХП цели для использования комбо
+  skill_heal_svet_i_tjma = 40;          // Свет и тьма
+  skill_heal_dar_jizni = 44;            // Дар жизни
+  skill_heal_nepr_iscelenie = 55;       // Непрерывное исцеление
+  skill_heal_klich_jizni = 77;          // Клич жизни
+  skill_heal_meditaciya = music_min_mp; // Медитация (по умолчанию как для игры на флейте)
+  skill_heal_fake_death = music_min_mp; // Имитация смерти (по умолчанию как для игры на флейте)
+  
+  stance_min_hp = 5;       // Минимальный % HP моба, при котором бот будет использовать магический квадрат или стойку лучника
+
+  wallet_open = false;          // Функция открывания кошельков и мешочков из библиотеки
+  wallet_or = 444;              // ОР, при которых бот будет открывать кошельи
+  
+  north_armour_open = false;    // Функция открывания северного шмота
+  north_armour_or = 55;         // ОР, при которых бот будет открывать севеный шмот
+
+  hlam_delete = false;          // Функция удаления выбитого шмота
+  max_delete_price = 222;       // Если цена в медяках (1 серебро = 100 меди) итема > указанной, то не удаляем такой шмот
+  max_delete_color = 1;         // Удалять только шмот, грейд которого <= указанного ( 0-белый, 1-серый, 2-зеленый, 3-синий, 4-уникальный, 5-эпический)
+
+  decomposition_equip = false;  // Функция разбиения выбитого шмота на акхиум (ломает только оружие\броню\бижу\инструменты\щиты)
+  min_decomp_color = 2;         // Минимальный цвет шмотки для разбиения: 2-зеленый, 3-синий, 4-уникальный, 5-эпический
+  max_decomp_color = 3;         // Максимальный цвет шмотки для разбиения: 2-зеленый, 3-синий, 4-уникальный, 5-эпический
+
+  
+  no_attack_mob_name1 = 'Крок';             // Имена мобов, на которых не нужно нападать 
+  no_attack_mob_name2 = 'Рогот';            // первым, но отбиваться в том случае, если 
+  no_attack_mob_name3 = 'Демон Сальфиры';   // они сагрились сами (можно не менять)
+
+  black_list_mob_name1 = 'Королева оводов';  // Имена мобов, на которых не нужно ни нападать 
+  black_list_mob_name2 = 'Страж королевы';   // ни отвечать, даже если они сагрились сами, 
+  black_list_mob_name3 = 'полный игнор 3';   // или взяли бота в таргет (например оранжевые элитные)
+
+      { ТУТ УЖЕ НИЧЕГО УКАЗЫВАТЬ НЕ НУЖНО, МОТАЕМ НИЖЕ, ТАМ УКАЗЫВАЮТСЯ МАРШРУТЫ }
+var
+  first_time_flag, need_to_fight, flag_huag: Boolean = true;
+	needintown_flag, intown_flag, first_attack_mode: Boolean;
+	gm_flag, gm_flag_2, error_flag, block_sticking_flag, block_cnvt: Boolean = false;
+	
+	skill_temp, skill_temp0, first_attack: TSkill; 
+	buff_temp, buff_etmp: TBuff;
+	Mob, ignored_mob: TNpc;
+	potion, Item: TItem;
+	enemy: TPlayer;
+	
+	c_Nui: array[1..2,1..3] of integer;                   
+	ItemsNotToSell: array[1..55] of string;
+	ItemsToStore: array[1..10] of string;
+	ItemsToSend: array[1..10] of string;
+	buff_item_name, items_buff_name: array[1..10] of string;
+	attack_skill: array[1..9] of TSkill;
+	attack_skill_min_target_hp: array[1..9] of integer;
+	attack_skill_max_target_hp: array[1..9] of integer;
+	attack_skill_min_user_hp: array[1..9] of integer;
+	attack_skill_max_user_hp: array[1..9] of integer;
+	attack_skill_min_user_mp: array[1..9] of integer; 
+	attack_skill_max_user_mp: array[1..9] of integer;
+	attack_skill_min_dist: array[1..9] of double; 
+	attack_skill_max_dist: array[1..9] of double;
+	attack_skill_target_effect: array[1..9] of string;
+	attack_skill_rdy_to_use: array[1..9] of string; 
+	attack_skill_delay_after_use: array[1..9] of integer;
+	
+	bot_state: Byte;
+	resp_index, mob_ignoring, sticking_timer, dl1, dl2, dl3, dl4, dl5, dl6, dl7, dl8, dl9, d20: Cardinal = 0; 
+	csi, dmtfa, dmtra, r: integer = 0;
+	ItemsNotToSell_length, ItemsToStore_length, ItemsToSend_length, items_to_buff_length: byte;
+	resp_coord_l: byte = 2;
+	c_Town_x, c_Town_y, c_Town_z, c_Smith_x, c_Smith_y, c_Smith_z, c_Spot_x, c_Spot_y, c_Spot_z: Integer;
+	c_Mail_x, c_Mail_y, c_Mail_z, c_WH_x, c_WH_y, c_WH_z, lag_x, lag_y, lag_z: Integer;
+ 
+	main_dps_skill: String;
+	target_cur_hp_tmp, first_attack_range: Integer;
+
+label
+  script_start, choose_bot_state;
+
+
+ 
+     
+     
+     
+                 
+      { ПРОДОЛЖЕНИЕ НАСТРОЕК: КЛЮЧЕВЫЕ КООРДИНАТЫ, СКИЛЫ, МАРШРУТЫ }
+{ О том, как записывать координаты написано чуть ниже }
+   //Engine.MoveTo(21669.24, 11323.04, 217.23);
+ //  Engine.MoveTo(21548.47, 11415.52, 207.05);
+    //Engine.MoveTo(21666.94, 23815.73, 238.35);
+    //Engine.MoveTo(21291.54, 26028.34, 207.35);
+    
+    
+procedure set_coord();  // Сюда указываются координаты основных точек
+begin 	
+	c_Spot_x:= 21612;        // Координата X спота (центра спота)
+	c_Spot_y:= 26610;        // Координата Y спота
+	c_Spot_z:= 201;         // Координата Z спота
+  
+	c_Smith_x:= 23815;       // Координата X Кузнеца
+	c_Smith_y:= 7430;       // Координата Y Кузнеца
+	c_Smith_z:= 406;        // Координата Z Кузнеца
+  
+	c_Town_x := 23812;       // Координата X центра города (Это нужно для определения месторасположения бота. Если у вас город, спот, и Нуи
+	c_Town_y := 7397;       // Координата Y центра города (расположены далеко друг от друга, то можно не менять, если же очень близко, то
+	c_Town_z := 405;        // Координата Z центра города (лучше укажите такую точку, чтобы зона города и спота\Нуи(15м) не пересекались)
+	
+	c_Mail_x:= 23825;        // Координата X почты
+	c_Mail_y:= 7335;        // Координата Y почты
+	c_Mail_z:= 405;         // Координата Z почты
+	
+	c_WH_x:= c_Mail_x;      // Координата X склада ( По умолчанию совпадает с почтой)
+	c_WH_y:= c_Mail_y;      // Координата Y склада ( но можете поменять, если они не)
+	c_WH_z:= c_Mail_z;      // Координата Z склада ( совпадают )
+	
+	c_Nui[1,1]:= 7860;      // Координата X для 1-ой Статуи Нуи  (во время войны, например)
+	c_Nui[1,2]:= 8202;      // Координата Y для 1-ой Статуи Нуи
+	c_Nui[1,3]:= 284;       // Координата Z для 1-ой Статуи Нуи
+	
+	c_Nui[2,1]:= 24081;      // Координата X для 2-ой Статуи Нуи  (не во время войны,)
+	c_Nui[2,2]:= 7374;      // Координата Y для 2-ой Статуи Нуи
+	c_Nui[2,3]:= 412;       // Координата Z для 2-ой Статуи Нуи 
+  
+	{ это не трогаем }
+	lag_x:= round(user.x);
+	lag_y:= round(user.y);
+	lag_z:= round(user.z);
+		
+end;
+
+      { ЗАПИСЫВАЕМ НЕОБХОДИМЫЕ МАРШРУТЫ И КОПИРУЕМ ИХ В СООТВЕТСВУЮЩИЕ МЕСТА }
+{ Маршрут можете быть как пеший (несколько Engine.MoveTo(x, y, z) подряд, так и ТП, которое можно реализовать
+двумя способами: Engine.Teleport(x, y, z) - имитирует ТП (лучше использовать на большие расстояния) и
+Engine.FastMoveTo(x, y, z) - перезаписывает наши координаты (не очень большие расстояния ~100-200 м).
+При использовании ТП, советую координате Z прибавлять +2 (чтобы не провалисться в текстуры), ниже уидите как.
+Узнать\записать наши координаты можно двумя способами:
+1. Нажать Alt+V - запишется строка вида Engine.MoveTo(x, y, z) с нашими текущими координатами
+2. Включить "Запись маршрута" - кнопка (красный кружок) и, заранее поставив курсор в нужно месторасположения
+скрипта, бежать мышкой в игре (должно быть включено движение с помощью мыши)
+После чего Engine.MoveTo можно заменить на Engine.FastMoveTo или Engine.Teleport
+Команды можно комбинировать, главное помните, что делать подряд несколько Engine.Teleport опасно, можно
+словить крота. Engine.FastMoveTo в этом плане безопасней. Ниже будет приведено несколько вариантов,
+как можно указать маршрут. }
+
+procedure PathToSpotFromResp(id : Cardinal); // Cюда записать маршруты от респов до спота
+begin                                         { >>> обязательно указать\настроить !!! <<< }
+	case id of
+	1:
+	begin { ОТ 1 СТАТУИ НУИ ДО СПОТА (можно подбегать к краю спота) }
+	
+        engine.moveto(user.x+random(5)-2,user.y+random(5)-2,user.z);  // Первый шаг нужен для того, чтобы подняться
+	  delay(delay_between_tp*1000);   // Ожидаем время перед телепортом, чтобы не ТПшиться слишком часто (от крота)
+		//Engine.teleport(8168.23, 8116.38, 285.50+2);   // ТП к краю спота (чтобы мобы сразу не сагрились)
+		delay(tp_delay*1000);   // Ожидание прорисовки
+		Engine.MoveTo(8168.23, 8116.38, 285.50);   // Последним шагом подбегаем ближе к центру спота (не обязательно)
+		
+		{ Пример с телепортом
+		engine.moveto(user.x+random(5)-2,user.y+random(5)-2,user.z);  // Первый шаг нужен для того, чтобы подняться
+	  delay(delay_between_tp*1000);   // Ожидаем время перед телепортом, чтобы не ТПшиться слишком часто (от крота)
+		Engine.teleport(8661.19, 8516.31, 267.84+2);   // ТП к краю спота (чтобы мобы сразу не сагрились)
+		delay(tp_delay*1000);   // Ожидание прорисовки
+		Engine.MoveTo(8656.65, 8535.79, 263.50);   // Последним шагом подбегаем ближе к центру спота (не обязательно)}
+
+		{ Пример для входа в библиотеку Эрнарда:
+		Engine.FastMoveTo(19491.75, 27042.75, 231.22+2);  // ТП ко входу в библиотеку
+		delay(1111);  // Небольшая задержка
+		Engine.OpenInstZone(401);   // Входим в первое измерение (402 - второе.. и тд);
+		delay(1111);  // Небольшая задержка
+		engine.moveto();  // Подбегаем к двери  (либо можно сразу FastMoveTo в нужную комнату)
+		engine.usekey('F');   // Открываем дверь 
+		engine.moveto();
+		engine.moveto();
+		.....
+		}
+	end;
+	2:
+	begin  { ОТ 2 СТАТУИ НУИ ДО СПОТА (можно подбегать к краю спота) }
+	  //Если у Вас бот ресается только на одной статуе, то можно не настраивать второую
+	 	  
+	  engine.moveto(user.x+random(5)-2,user.y+random(5)-2,user.z);  // Первый шаг нужен для того, чтобы подняться
+	  delay(delay_between_tp*1000);   // Ожидаем время перед телепортом, чтобы не ТПшиться слишком часто (от крота)
+		//Engine.fastMoveTo(8168.23, 8116.38, 285.50+2);   // ТП к краю спота (чтобы мобы сразу не сагрились)
+		delay(tp_delay*1000);   // Ожидание прорисовки
+		Engine.MoveTo(8168.23, 8116.38, 285.50);   // Последним шагом подбегаем ближе к центру спота (не обязательно) 
+
+		{ Пример комбинирования Engine.MoveTo и Engine.FastMoveTo}
+		{Engine.fastMoveTo(8885.04, 8367.06, 274.07+2);
+		Engine.MoveTo(8859.37, 8386.46, 277.26);
+		Engine.FastMoveTo(8806.95, 8433.93, 238.37+2);
+		Engine.MoveTo(8775.25, 8439.24, 240.88);
+		Engine.MoveTo(8741.90, 8454.30, 243.05);
+		Engine.MoveTo(8716.32, 8483.36, 249.78);
+		Engine.MoveTo(8689.02, 8506.39, 252.79);
+		Engine.FastMoveTo(8671.69, 8519.57, 266.02+2);
+		Engine.MoveTo(8656.65, 8535.79, 263.50); } 	
+	end;
+	end;
+end;
+
+procedure PathToTownFromResp(id : Cardinal);  // Cюда записать маршруты от респов до города (до кузнеца)
+begin                  
+	case id of       { >>> если у вас включен teleport_mode = true, то можно не указывать !!! <<< }
+	1:
+	begin
+	  { ОТ 1 СТАТУИ НУИ ДО КУЗНЕЦА }
+	  { Пример с телепортацией; если расстояние от Нуи до спота не большое (100-200) то можно использовать Engine.FastMoveTo }
+	  
+	  {engine.moveto(user.x+random(5)-2,user.y+random(5)-2,user.z); // Когда бежим от Нуи, первый шаг делаем рандомный (рядом с собой), чтобы подняться с земли
+	  delay(delay_between_tp*1000);  // Делаем задержку перед ТП, чтобы не ТПшиться слишком часто
+		Engine.teleport(23815.50, 7430.02, 406.46+2); // Это телепорт, советую координате Z делать от +2 до +5 (иначе может проваливатья под текстуры)		  
+    delay(tp_delay*1000);   // Задержка после ТП на прорисовку  }
+    
+    { Пример простого пешего маршрута }
+    Engine.MoveTo(23643.04, 12147.82, 362.51);
+    Engine.MoveTo(23611.59, 12136.59, 354.47);
+    Engine.MoveTo(23590.84, 12169.88, 351.45);
+    Engine.MoveTo(23578.44, 12176.99, 350.74);
+    Engine.MoveTo(23571.13, 12172.25, 350.81);
+    
+	end;
+	2:
+	begin
+	  { ОТ 2 СТАТУИ НУИ ДО КУЗНЕЦА }  //Если у Вас бот ресается только на одной статуе, то можно не настраивать второую
+	  
+	  {engine.moveto(user.x+random(5)-2,user.y+random(5)-2,user.z); // Когда бежим от Нуи, первый шаг делаем около статуи, чтобы подняться с земли
+	  delay(delay_between_tp*1000);  // Делаем задержку перед ТП, чтобы не ТПшиться слишком часто
+		Engine.teleport(23815.50, 7430.02, 406.46+2); // Это телепорт, советую координате Z делать от +2 до +5 (иначе может проваливатья под текстуры)		  
+    delay(tp_delay*1000);   // Задержка после ТП на прорисовку  } 
+    Engine.MoveTo(23815.50, 7430.02, 406.46);
+      
+	end;
+	end;
+end;
+
+procedure PathToTownFromSpot();  // Cюда записать маршрут от спота до города (до кузнеца)
+begin
+  { если у вас включен teleport_mode = true, то можно не указывать }
+  Engine.MoveTo(23761.75, 12135.12, 387.80);
+  Engine.MoveTo(23709.74, 12140.04, 374.60);
+  Engine.MoveTo(23654.25, 12144.78, 362.91);
+  Engine.MoveTo(23610.27, 12137.37, 354.11);
+  Engine.MoveTo(23591.82, 12170.37, 351.66);
+  Engine.MoveTo(23578.61, 12179.87, 351.00);
+  Engine.MoveTo(23571.26, 12172.09, 351.16);
+  
+end;
+
+procedure PathToSpotFromTown();  // Cюда записать маршрут из города на спот (можно к краю спота)
+begin                                 { >>> обязательно указать\настроить !!! <<< }
+  {маршрут..} 
+	  engine.moveto(user.x+random(5)-2,user.y+random(5)-2,user.z);  // Рандомный шаг в сторону
+	  delay(delay_between_tp*1000);   // Ожидаем время перед телепортом, чтобы не ТПшиться слишком часто (от крота)
+		//Engine.fastMoveTo(8168.23, 8116.38, 285.50+2);
+		delay(tp_delay*1000);
+		Engine.MoveTo(8168.23, 8116.38, 285.50);
+	
+		
+end;
+
+procedure PathToSpotFromAnywhere();  // Cюда записать маршрут на спот, если вы не нашли себя (можно к краю спота), 
+begin  { если у вас выключен teleport_mode = fasle, то можно не указывать }
+        { первые 2 строчки не трогаем! }
+	  engine.moveto(user.x+random(5)-2,user.y+random(5)-2,user.z);    // Рандомный шаг в сторону
+	  delay(delay_between_tp*1000);   // Ожидаем время перед телепортом, чтобы не ТПшиться слишком часто (от крота)
+//------------------------------------------------------------------- 
+		//Engine.Teleport(8168.23, 8116.38, 285.50+2);  // Реккомендую использовать именно Engine.Teleport в этом случае
+		delay(tp_delay*1000);                         // Время на прорисовку
+		Engine.MoveTo(8168.23, 8116.38, 285.50);      // Подбегаем чуть ближе к центру спота (не обязательно)
+end;
+
+
+procedure set_fight_skills();   // Настройка скилов (боевых)
+begin
+  main_dps_skill:= 'Сгустки пламени';   // Указать основной дпс скил: Сгустки пламени, Клинки смерти, Азарт мстителя, Потрошение, Тройной удар
+
+  first_attack_mode:= false;   // Вкл\выкл функции первой атаки (если скил доступен, то заюзает 1 раз на моба в начале боя)
+	Skills.ByName('Ледяная стрела',first_attack);   // Первая атака, например 'Стрельба из лука' 
+  first_attack_range:=first_attack.maxrange;
+  
+  if Skills.ByName('',attack_skill[1]) then  // Указать название скила, который нужно использовтаь
+  begin
+	attack_skill_min_target_hp[1]:= 22;    // Указать минимальный % ХП цели, при котором бот будет использовать этот скил. Значения от 0 до 100
+	attack_skill_max_target_hp[1]:= 100;   // Указать максимальный % ХП цели, при котором бот будет использовать этот скил
+	attack_skill_min_user_hp[1]:= 0;       // Указать минимальный % ХП бота, при котором он будет использовать этот скил
+  attack_skill_max_user_hp[1]:= 100;     // Указать максимальный % ХП бота, если ХП опустится ниже указанного значения, то он использует этот скил
+  attack_skill_min_user_mp[1]:= 0;       // Указать минимальный % МП бота, при котором он будет использовать этот скил
+  attack_skill_max_user_mp[1]:= 100;      // Указать максимальный % МП бота, если МП опустится ниже указанного значения, то он использует этот скил 
+	attack_skill_min_dist[1]:= 0;          // Указать минимальную дистанцию, на которой будет использоваться скилы (если <, то не будет) 
+	attack_skill_max_dist[1]:= 44;          // Указать максимальную дистанцию, на которой будет использоваться скилы (если >, то не будет)
+  attack_skill_target_effect[1]:= '';    // Указать название эффекта, который должен висеть на мобе, чтобы бот заюзал этот скил (для комбо)
+  attack_skill_rdy_to_use[1]:= '';       // Указать название скила, который должен быть готов к использованию, чтобы использовать этот скил
+  attack_skill_delay_after_use[1]:= 0;   // Задержка после использования скила (в мс, 1000 мс = 1 секунда)
+	end;        
+
+    { Не обязательно указывать все скилы, Вы можете оставить поля ниже без изменений. если не будет указанного скила, это не страшно }
+	if Skills.ByName('',attack_skill[2]) then     
+	begin                                                     
+	attack_skill_min_target_hp[2]:= 33;
+	attack_skill_max_target_hp[2]:= 100;   // Ждем, чтобы мы уже успели ударить фаерболом
+	attack_skill_min_user_hp[2]:= 0;
+  attack_skill_max_user_hp[2]:= 100;  
+  attack_skill_min_user_mp[2]:= 0; 
+  attack_skill_max_user_mp[2]:= 100;
+  attack_skill_min_dist[2]:= 0;
+  attack_skill_max_dist[2]:= 44;
+  attack_skill_target_effect[2]:= '';  
+  attack_skill_rdy_to_use[2]:= '';
+  attack_skill_delay_after_use[2]:= 0;   // После использования ждем 6 сек, чтобы цель успела подняться в воздух
+  end;
+	
+	if Skills.ByName('Ледяная стрела',attack_skill[3]) then  //Ледяная стрела
+	begin
+	attack_skill_min_target_hp[3]:= 33;
+	attack_skill_max_target_hp[3]:= 100; 
+	attack_skill_min_user_hp[3]:= 0;
+  attack_skill_max_user_hp[3]:= 100;
+  attack_skill_min_user_mp[3]:= 0; 
+  attack_skill_max_user_mp[3]:= 100; 
+  attack_skill_min_dist[3]:= 0;
+  attack_skill_max_dist[3]:= 44;
+  attack_skill_target_effect[3]:= '';
+  attack_skill_rdy_to_use[3]:= ''; 
+  attack_skill_delay_after_use[3]:= 0;
+  end;
+  
+	if Skills.ByName('Поглощение энергии',attack_skill[4]) then         
+	begin
+	attack_skill_min_target_hp[4]:= 20;
+	attack_skill_max_target_hp[4]:= 100;
+	attack_skill_min_user_hp[4]:= 0;
+  attack_skill_max_user_hp[4]:= 100;
+  attack_skill_min_user_mp[4]:= 0;  
+  attack_skill_max_user_mp[4]:= 100;
+  attack_skill_min_dist[4]:= 0;
+  attack_skill_max_dist[4]:= 5;  
+  attack_skill_target_effect[4]:= '';
+  attack_skill_rdy_to_use[4]:= '';
+  attack_skill_delay_after_use[4]:= 0;
+  end;
+  
+	if Skills.ByName('Молния гнева',attack_skill[5]) then
+	begin
+	attack_skill_min_target_hp[5]:= 33;
+	attack_skill_max_target_hp[5]:= 100;
+	attack_skill_min_user_hp[5]:= 0;
+  attack_skill_max_user_hp[5]:= 100;
+  attack_skill_min_user_mp[5]:= 0; 
+  attack_skill_max_user_mp[5]:= 100;
+  attack_skill_min_dist[5]:= 0;
+  attack_skill_max_dist[5]:= 44; 
+  attack_skill_target_effect[5]:= '';
+  attack_skill_rdy_to_use[5]:= '';
+  attack_skill_delay_after_use[5]:= 0;
+  end;
+
+	if Skills.ByName('Мясорубка',attack_skill[6]) then 
+	begin
+	attack_skill_min_target_hp[6]:= 11;
+	attack_skill_max_target_hp[6]:= 100; 
+	attack_skill_min_user_hp[6]:= 0;
+  attack_skill_max_user_hp[6]:= 100;
+  attack_skill_min_user_mp[6]:= 0; 
+  attack_skill_max_user_mp[6]:= 100;
+  attack_skill_min_dist[6]:= 0;
+  attack_skill_max_dist[6]:= 44; 
+  attack_skill_target_effect[6]:= '';
+  attack_skill_rdy_to_use[6]:= '';
+  attack_skill_delay_after_use[6]:= 0;
+  end;
+  
+  if Skills.ByName('Ликвидация',attack_skill[7]) then 
+	begin
+	attack_skill_min_target_hp[7]:= 11;
+	attack_skill_max_target_hp[7]:= 100;
+	attack_skill_min_user_hp[7]:= 0;
+  attack_skill_max_user_hp[7]:= 100;
+  attack_skill_min_user_mp[7]:= 0; 
+  attack_skill_max_user_mp[7]:= 100;
+  attack_skill_min_dist[7]:= 0;
+  attack_skill_max_dist[7]:= 44; 
+  attack_skill_target_effect[7]:= '';
+  attack_skill_rdy_to_use[7]:= '';
+  attack_skill_delay_after_use[7]:= 0;
+  end;
+  
+  if Skills.ByName('Расправа',attack_skill[8]) then 
+	begin
+	attack_skill_min_target_hp[8]:= 11;
+	attack_skill_max_target_hp[8]:= 100;
+	attack_skill_min_user_hp[8]:= 0;
+  attack_skill_max_user_hp[8]:= 100;
+  attack_skill_min_user_mp[8]:= 0; 
+  attack_skill_max_user_mp[8]:= 100;
+  attack_skill_min_dist[8]:= 0;
+  attack_skill_max_dist[8]:= 44; 
+  attack_skill_target_effect[8]:= '';
+  attack_skill_rdy_to_use[8]:= ''; 
+  attack_skill_delay_after_use[8]:= 0;
+  end;
+  
+  if Skills.ByName('Решающий удар',attack_skill[9]) then 
+	begin
+	attack_skill_min_target_hp[9]:= 11;
+	attack_skill_max_target_hp[9]:= 100;
+	attack_skill_min_user_hp[9]:= 0;
+  attack_skill_max_user_hp[9]:= 100;
+  attack_skill_min_user_mp[9]:= 0; 
+  attack_skill_max_user_mp[9]:= 100;
+  attack_skill_min_dist[9]:= 0;
+  attack_skill_max_dist[9]:= 44; 
+  attack_skill_target_effect[9]:= '';
+  attack_skill_rdy_to_use[9]:= '';
+  attack_skill_delay_after_use[9]:= 0;
+  end;   
+	
+end;
+
+function set_buff_items(): byte;   // Настройка бафов с помощью еды\свитков
+var k: byte;
+begin
+	k := 1;
+	buff_item_name[k]:=  'Плотная книжная закладка';       // Название итема для бафа
+  items_buff_name[k]:= 'Плотная книжная закладка';      // Название бафа, который дает итем
+  inc(k);
+	buff_item_name[k]:=  'Нектар Долгой косы';
+  items_buff_name[k]:= 'Нектар Долгой косы';
+  inc(k);
+	buff_item_name[k]:=  'Поющий пунш Хэншея';
+  items_buff_name[k]:= 'Поющий пунш Хэншея';
+  inc(k);
+	buff_item_name[k]:=  'Похлебка ост-терских докеров';
+  items_buff_name[k]:= 'Похлебка ост-терских докеров';
+  inc(k);
+	buff_item_name[k]:=  'Эликсир жрецов Нуи';
+  items_buff_name[k]:= 'Эликсир жрецов Нуи';
+  inc(k);
+	buff_item_name[k]:=  'Средний флакон с эликсиром защиты';
+  items_buff_name[k]:= 'Защита I'; 
+  inc(k);
+	buff_item_name[k]:=  'Средний флакон с эликсиром стойкости';
+  items_buff_name[k]:= 'Сопротивление I';
+  inc(k);
+	buff_item_name[k]:=  '';
+  items_buff_name[k]:= '';
+  inc(k);              
+	buff_item_name[k]:=  '';
+  items_buff_name[k]:= '';
+  inc(k);
+	buff_item_name[k]:=  '';
+  items_buff_name[k]:= '';
+  Result:= k;
+end;
+
+function SetItemsNotToSell(): byte;  // Исключения продаваемых итемов
+begin
+  { УКАЗЫВАЕМ НАЗВАНИЯ ТЕХ ПРЕДМЕТОВ, КОТОРЫЕ НЕ НУЖНО ПРОДАВАТЬ }
+	ItemsNotToSell[1]:=  'Крохотный флакон с целебным эликсиром'; 
+	ItemsNotToSell[2]:=  'Малый флакон с целебным эликсиром'; 
+	ItemsNotToSell[3]:=  'Средний флакон с целебным эликсиром';
+	ItemsNotToSell[4]:=  'Большой флакон с целебным эликсиром';
+	ItemsNotToSell[5]:=  'Драгоценный флакон с целебным эликсиром';
+	ItemsNotToSell[6]:=  'Призма солнечного акхиума';
+	ItemsNotToSell[7]:=  'Призма лунного акхиума';
+	ItemsNotToSell[8]:=  'Призма звездного акхиума';
+	ItemsNotToSell[9]:=  'Слиток солнечного акхиума';  
+	ItemsNotToSell[10]:= 'Слиток лунного акхиума';  
+	ItemsNotToSell[11]:= 'Слиток звездного акхиума';     
+	ItemsNotToSell[12]:= 'Пыль солнечного акхиума';
+	ItemsNotToSell[13]:= 'Пыль лунного акхиума';
+	ItemsNotToSell[14]:= 'Пыль звездного акхиума';
+	ItemsNotToSell[15]:= 'Мерцающий осколок';
+	ItemsNotToSell[16]:= 'Пыль дельфийского сада';
+	ItemsNotToSell[17]:= 'Шкура';
+	ItemsNotToSell[18]:= 'Аметистовая руна восхода безмолвной луны';
+	ItemsNotToSell[19]:= 'Изумрудная руна восхода молодой луны';
+	ItemsNotToSell[20]:= 'Рубиновая руна восхода багровой луны';
+	ItemsNotToSell[21]:= 'Сапфировая руна восхода колдовской луны';
+	ItemsNotToSell[22]:= 'Янтарная руна восхода осенней луны';
+	ItemsNotToSell[23]:= 'Камень новолуния';
+	ItemsNotToSell[24]:= 'Крапивная настойка';
+	ItemsNotToSell[25]:= 'Камень странствий';
+	ItemsNotToSell[26]:= 'Крохотный флакон с целебной микстурой';
+	ItemsNotToSell[27]:= 'Малый флакон с целебной микстурой';
+	ItemsNotToSell[28]:= 'Средний флакон с целебной микстурой';
+	ItemsNotToSell[29]:= 'Большой флакон с целебной микстурой';
+	ItemsNotToSell[30]:= 'Драгоценный флакон с целебной микстурой';
+	ItemsNotToSell[31]:= 'Средний флакон с зельем стойкости';
+	ItemsNotToSell[32]:= 'Средний флакон с зельем защиты';
+	ItemsNotToSell[33]:= 'Крохотный флакон с эликсиром маны';
+	ItemsNotToSell[34]:= 'Малый флакон с эликсиром маны';
+	ItemsNotToSell[35]:= 'Средний флакон с эликсиром маны';
+	ItemsNotToSell[36]:= 'Большой флакон с эликсиром маны';
+	ItemsNotToSell[37]:= 'Драгоценный флакон с эликсиром маны';
+	ItemsNotToSell[38]:= '';
+	ItemsNotToSell[39]:= '';
+	ItemsNotToSell[40]:= '';
+	ItemsNotToSell[41]:= '';
+	ItemsNotToSell[42]:= '';
+	ItemsNotToSell[43]:= '';
+	ItemsNotToSell[44]:= '';
+	ItemsNotToSell[45]:= '';
+	ItemsNotToSell[46]:= '';
+	ItemsNotToSell[47]:= '';
+	ItemsNotToSell[48]:= '';
+	ItemsNotToSell[49]:= '';
+	ItemsNotToSell[50]:= '';
+	ItemsNotToSell[51]:= '';
+	ItemsNotToSell[52]:= '';
+	ItemsNotToSell[53]:= '';
+	ItemsNotToSell[54]:= '';
+	ItemsNotToSell[55]:= '';
+	Result := 55;
+end;
+
+function SetItemsToStore(): byte;  // Указываются итемы, которые нужно класть в ВХ
+begin
+	ItemsToStore[1]:=  'Призма солнечного акхиума';
+	ItemsToStore[2]:=  'Призма лунного акхиума';
+	ItemsToStore[3]:=  'Название предмета';  // Если что, можно оставить поля пустыми
+	ItemsToStore[4]:=  'Название предмета';
+	ItemsToStore[5]:=  'Название предмета';
+	ItemsToStore[6]:=  'Название предмета';
+	ItemsToStore[7]:=  'Название предмета';
+	ItemsToStore[8]:=  'Название предмета';
+	ItemsToStore[9]:=  'Название предмета';
+	ItemsToStore[10]:= 'Название предмета';
+	Result := 10;
+end;
+
+function SetItemsToSend() : byte; // Указываем итемы, которые нужно отправлять по почте
+begin
+	ItemsToSend[1]:=  'Мерцающий осколок';
+	ItemsToSend[2]:=  'Пыль дельфийского сада';
+	ItemsToSend[3]:=  'Название предмета';  // Если что, можно оставить пустым
+	ItemsToSend[4]:=  'Название предмета';
+	ItemsToSend[5]:=  'Название предмета';
+	ItemsToSend[6]:=  'Название предмета';
+	ItemsToSend[7]:=  'Название предмета';
+	ItemsToSend[8]:=  'Название предмета';
+	ItemsToSend[9]:=  'Название предмета';
+	ItemsToSend[10]:= 'Название предмета';
+	Result := 10;
+end;
+
+//==============================================================================
+                  { ДАЛЬШЕ НИЧЕГО ТРОГАТЬ НЕ НУЖНО! }
+//==============================================================================
+function BoolToStr_self(const value : boolean) : string;
+begin
+  if value then Result:= 'True' 
+  else Result:= 'False';
+end;
+
+function FreeSlots() : Byte;  // Функция для проверки кол-ва свободных слотов в инентаре
+var
+	i : byte;
+	item : TItem;
+begin
+	result := 0;
+	for i:=0 to inv.max-1 do
+	begin
+		if (Inv.BySlot(i, item) = false) then result := result + 1;
+	end;
+end;
+
+function GetBestMob() : TNpc; // Выбор лучшего моба
+var                                            
+  i: Integer;
+  dist: Single;
+begin  
+  if (debug_logs) and (ignored_mob <> nil) then engine.print('function GetBestMob: _сейчас в игноре: '+ignored_mob.name+' (дистанция: '+ftostr(user.distto(ignored_mob))+' m, HP: '+inttostr(ignored_mob.hp)+')',32896);
+	Result := nil;
+	dist := max_range - 3;	
+	for i := 0 to mobs.count-1 do // Пробегаем в цикле по списку мобов
+	begin
+	  if (mobs(i).hp = 0) or (mobs(i).dead) then Continue;
+		if (mobs(i).target = user) and (not mobs(i).dead) and (mobs(i).GameClass <> otPlayer) and (mobs(i).Valid) then  // Если живой моб (не из блек листа) держит нас на прицеле, тогда
+		  if (mobs(i).name = black_list_mob_name1) or
+		  (mobs(i).name = black_list_mob_name2) or
+		  (mobs(i).name = black_list_mob_name3) then
+		  begin
+      if (debug_logs) then engine.print('function GetBestMob: _попался моб из блек листа: ' + mobs(i).name+' (дистанция: '+ftostr(user.distto(mobs(i)))+' m, HP: '+inttostr(mobs(i).hp)+')',8388608);
+      delay(111);
+		  Continue;
+      end
+		  else 
+		  begin
+		    if (debug_logs) then engine.print('function GetBestMob: _выбрал сагрившегося моба: ' + mobs(i).name+' (дистанция: '+ftostr(user.distto(mobs(i)))+' m, HP: '+inttostr(mobs(i).hp)+')',8388608);
+		    if mobs(i) = ignored_mob then ignored_mob := nil;   // Если этот моб был в игноре, то очищаем игнор
+		    Result := mobs(i);  // Выдаем результатом этого моба
+		    //if (debug_logs) then engine.print('function GetBestMob: _Result: '+Result.name+' (дистанция: '+ftostr(user.distto(Result))+' m, HP: '+inttostr(Result.hp)+')',32896);
+		    Engine.TurnTo(Result, 3); // Поворачиваем к ней
+		    delay(111); 
+		    Break;  // И выходим из цикла
+		  end;
+		  
+		if ((mobs(i).name = no_attack_mob_name1) or
+		(mobs(i).name = no_attack_mob_name2) or
+		(mobs(i).name = no_attack_mob_name3) or
+		(mobs(i) = ignored_mob)) then
+		begin
+		  if (debug_logs) then engine.print('function GetBestMob: _попался моб из списка игнора:' + mobs(i).name+' (дистанция: '+ftostr(user.distto(mobs(i)))+' m, HP: '+inttostr(mobs(i).hp)+')',8388608);
+		  delay(111);
+		  Continue;   // Если моб в исключениях, то пропускаем его (не нападаем сами)
+    end;
+		if (User.DistTo(mobs(i)) < dist) and
+		(User.DistTo(mobs(i)) < max_range-3) and
+		(User.DistTo(mobs(i)) < 333) and 
+		(abs(User.Z - mobs(i).Z) < Z_limit) and
+		(not mobs(i).dead) and
+		(mobs(i).hp <> 0) and
+		(mobs(i).target = nil) and 
+		(mobs(i).GameClass <> otPlayer) and
+		(mobs(i) <> ignored_mob) and
+		(mobs(i).DistTo(c_Spot_x, c_Spot_y, c_Spot_z) < range_spot) then
+		begin
+		  if (mobs(i) = ignored_mob) then Continue;
+		  if (debug_logs) then engine.print('function GetBestMob: _выбираю моба обычным образом: ' + mobs(i).name+' (дистанция: '+ftostr(user.distto(mobs(i)))+' m, HP: '+inttostr(mobs(i).hp)+')',8388608);
+			dist := User.DistTo(mobs(i));
+			Result := mobs(i);
+			delay(111);
+			//if (debug_logs) then engine.print('function GetBestMob: _Result: ' + Result.name+' (дистанция: '+ftostr(user.distto(Result))+' m, HP: '+inttostr(Result.hp)+')',32896);
+			//if (Result <> nil) then ignored_mob:=nil;
+			//print('function GetBestMob: _очищаю игнор');
+			//if (debug_logs) and (Result = nil) then engine.print('function GetBestMob: _не нашлось мобов: ' + Result.name,32896);
+		end;
+	end; 	
+  if (debug_logs) and (Result = nil) and timerex(dl2,3333) then engine.print('function GetBestMob: _не нахожу цель',8421376);
+  if (Result = nil) then delay(111);
+end;           
+    
+function NeedInTown() : Boolean;  // Проверка - нужно ли в город?
+var i: Cardinal;
+begin
+	Result := false;
+	
+	if (repairing_active) then 
+	  begin
+		  for i:= 0 to Equips.Count-1 do
+		    begin
+		      if (Equips(i).Durability < min_durability) and
+		      (length(Equips(i).Name) > 1) and
+		      (equips(i).name <> 'fe_m_face00') and 
+		      (equips(i).slot <> 19) and		      
+		      (equips(i).slot <> 8) then
+		          begin
+		            engine.print('Нужно в город, т.к. есть разбитые доспехи: '+Equips(i).Name,0); 
+		            Result := true;
+		            Break;
+		          end;
+		    end;
+	  end;
+
+	if ((selling_active) and (FreeSlots() < slots_need_in_town)) then
+	  begin
+	    engine.print('Нужно в город, т.к. забит инвентарь, свободных слотов: '+ IntToStr(FreeSlots()),0);
+	    Result := true;
+	  end;
+  	  
+	if ((sending_active) and (User.Gold > gold_need_in_town*10000)) then
+	  begin
+	    engine.print('Нужно в город, т.к. накопилось много голды: '+ IntToStr(round(User.Gold/10000)),0);
+	    Result := true;
+	  end;
+
+end;
+ 
+function GetItemByPart(part: string) : TItem;
+var i : integer;
+begin
+  for i := 0 to inv.count - 1 do
+    if Pos(part, inv.items(i).name) <> 0 then
+    begin
+      GetItemByPart := inv.items(i);
+      break;
+    end;
+end;
+	
+procedure RunToTownFromResp();
+var
+	i : Cardinal;
+	Skill : TSkill;
+begin
+	if (round(User.DistTo(c_Town_x, c_Town_y, c_Town_z)) < range_town ) then Engine.MoveTo(c_Smith_x, c_Smith_y, c_Smith_z) 
+	else begin
+		if (teleport_mode) then begin
+		  delay(delay_between_tp*1000);
+		  //engine.teleport(c_Smith_x, c_Smith_y, c_Smith_z+2);
+		  delay(tp_delay*1000);
+		end
+		else begin
+			Skills.ByID(10594, Skill);
+			if (Skill.EndTime = 0) then begin
+				engine.StopMove;  
+				engine.print('Путевые заметки с респа',0);			
+				engine.useskill(Skill.ID);
+				while (User.cast.endtime <> 0) do delay(100);
+				delay(tp_delay*1000);
+			end
+			else PathToTownFromResp(resp_index);
+		end;
+	end;
+end;
+
+procedure RunToTownFromSpot();
+var 
+	i : Cardinal;
+	Skill : TSkill;
+	result: boolean;
+begin
+	if (round(User.DistTo(c_Town_x, c_Town_y, c_Town_z)) < range_town ) then Engine.MoveTo(c_Smith_x, c_Smith_y, c_Smith_z)
+	else begin
+		if (teleport_mode) then begin 
+		  delay(delay_between_tp*1000);
+		  //engine.teleport(c_Smith_x, c_Smith_y, c_Smith_z+2);
+		  delay(tp_delay*1000);
+    end
+		else begin
+			Skills.ByID(10594, Skill);
+			if (Skill.EndTime = 0) then begin
+				Engine.StopMove;
+				engine.print('Бежим в города со спота',0);
+				Engine.UseSkill(Skill.ID);
+				while (User.cast.endtime <> 0) do delay(100);
+				delay(tp_delay*1000);
+			end
+			else PathToTownFromSpot();
+		end;
+	end;
+end;
+
+procedure RunToSpotFromResp();
+var i : Cardinal;
+begin                                                                                                   
+	if (User.DistTo(c_Spot_x, c_Spot_y, c_Spot_z) > range_spot) then PathToSpotFromResp(resp_index)
+	else engine.print('Я считаю, что я и так на споте, дистацния до центра спота: '+ftostr(User.DistTo(c_Spot_x, c_Spot_y, c_Spot_z)),255);  	
+end;
+
+procedure RunToSpotFromTown();
+var i : Cardinal;
+begin
+	if (User.DistTo(c_Spot_x, c_Spot_y, c_Spot_z) > range_spot) then PathToSpotFromTown()
+	else engine.print('Я считаю, что я и так на споте, дистацния до центра спота: '+ftostr(User.DistTo(c_Spot_x, c_Spot_y, c_Spot_z)),255);
+end;
+
+procedure buying_moonstones();
+var need_to_buy: integer;
+begin
+  if (inv.itemcount('Камень новолуния') > moonstones_count) then exit
+  else begin
+    need_to_buy:= moonstones_count - inv.itemcount('Камень новолуния');
+    if (user.gold < need_to_buy*500) then begin
+      engine.print('Не хватает голды на покупку камней новолуния',128);
+      exit;
+    end;
+    engine.usekey('F');
+    delay(1111);
+    engine.BuyItems([19812,need_to_buy]);
+    delay(1111);
+    engine.usekey('esc'); 
+    delay(1111);   
+  end;  
+end; 
+
+procedure Selling();
+var 
+	i,j : Cardinal;
+	flag,flag1,flag2: Boolean;
+begin
+	flag:= true;
+	while (flag) do
+	begin
+		i := 1;
+		j := 1;
+		flag1 := true;
+		while (flag1) do
+		begin
+			flag2 := false;
+			for j:=1 to ItemsNotToSell_length do
+			begin
+				if (Inv.Items(i).name = ItemsNotToSell[j]) then 
+				begin
+					flag2 := true;
+					break;
+				end;
+			end;
+		
+			if (flag2) or (Inv.Items(i).Sellable = false) then
+				if (i = Inv.count-1) then
+				begin
+					flag := false;
+					flag1 := false;
+				end
+				else i:= i+1
+			else
+			begin
+				Inv.Items(i).ToSell;				
+				delay(111);
+				Engine.SellItems;
+				delay(111);
+				flag1 := false;
+			end;			
+		end;
+		
+	end;
+end;
+
+procedure Storing();
+var
+	item: TItem;
+	i : Cardinal;
+begin
+	for i := 1 to ItemsToStore_length do
+	begin
+		while Inv.ByName(ItemsToStore[i], item) do // Ищем помеченные предметы и пока находим
+			if Engine.MoveItem(item, Warehous) then  // Помещаем их в инвентарь склада
+			begin
+				delay(555);
+				engine.print('Положили на склад: ' + item.name,0)
+				end
+			else
+				Break;
+	end;  
+end;
+	
+procedure Sending();
+var
+ item: TItem;
+ i: Cardinal;
+begin
+	 for i := 1 to ItemsToSend_length do
+	 begin
+	  while (inv.ByName(ItemsToSend[i], item)) do // Ищем помеченные предметы и пока находим 
+	  begin
+	   item.ToMail; // Помечаем их на отправку
+	   if Engine.SendMail(wh_nickname, 'Хлам', '', 0, True) then  // Если мы отправили предмета успешно, то
+	   begin
+	    delay(555);
+	    engine.Print('Отослано: ' + ItemsToSend[i],0);  // Напечатаем об этом :D 
+	   end;
+	  end;
+	 end;
+	 if (User.gold > gold_to_send*10000) then // Если у нас голды больше, чем нужно отправлять, то 
+	 begin
+	  if (Engine.SendMail(wh_nickname, 'Золото', '', gold_to_send*10000, True)) then engine.Print('Золото отправлено',128); {для голды}
+	  delay(555);
+	 end;
+end;
+
+procedure Init();
+var
+	near_spot, near_town : Boolean;
+	i : Cardinal;
+begin
+  mob := nil;
+	resp_index := 0;
+	near_spot := false;
+	near_town := false;
+	
+	if (User.Dead) and (Status = lsOnline) then bot_state := 6
+	else
+	begin
+		for i:=1 to resp_coord_l do
+		begin
+			if (round(User.DistTo(c_nui[i,1], c_nui[i,2], c_nui[i,3])) < range_nui) then
+			begin
+				resp_index := i;
+				Break;
+			end;			
+		end;
+		if (round(User.DistTo(c_Spot_x, c_Spot_y, c_Spot_z)) < range_spot + 10 ) then near_spot := true;
+		if (round(User.DistTo(c_Town_x, c_Town_y, c_Town_z)) < range_town ) then near_town := true;
+		if (debug_logs) then engine.print('procedure Init: _near_spot: ' + BoolToStr_self(near_spot),8388608);
+    if (debug_logs) then engine.print('procedure Init: _near_town: ' + BoolToStr_self(near_town),8388608);
+
+    if (near_town) and (near_spot) then begin
+      engine.print('Обнаружено пересечение зон города и спота, поправьте координаты\радиусы!',255);
+      script.stop;
+    end;
+		
+		if (NeedInTown()) and (Status = lsOnline) then  // Если нужно в город 
+		begin
+			bot_state := 4;
+			if (near_town) then bot_state := 4
+			else
+				if (resp_index <> 0) then 
+				begin
+					PathToTownFromResp(resp_index);
+				end
+				else
+				if (teleport_mode) then begin
+				  block_sticking_flag:= true;
+				  engine.print('Не смог найти себя, нужно в город, так что телепортируюсь к кузнецу... (отсчет '+inttostr(delay_between_tp)+' сек)',8421504);
+				  delay(delay_between_tp*1000);
+				  //engine.teleport(c_Smith_x, c_Smith_y, c_Smith_z+2);
+				  delay(tp_delay*1000);  
+				  block_sticking_flag:= false;
+				end
+				else begin
+				  block_sticking_flag:= true;
+					Skills.ByID(10594, skill_temp);
+					if (skill_temp.EndTime <> 0) then engine.print('Жду отката путевых заметок...',0);
+					while (skill_temp.EndTime <> 0) do delay(333);
+					Engine.StopMove;
+					engine.print('Не смог найти себя, нужно в город. Использую путевые заметки...',0);
+					Engine.UseSkill(skill_temp.ID);
+					while (User.cast.endtime <> 0) do delay(333);
+					delay(tp_delay*1000);
+				  block_sticking_flag:= false;
+				end;		
+		end
+		else  // Если в город не нужно
+		begin
+			if (near_spot) then bot_state := 1  // Если на споте, то фармим
+			else if (near_town) then bot_state := 8 // Если в городе, то бежим на спот
+			else if (resp_index <> 0) then  // Если около статуи Нуи, то бежим на спот 
+			begin
+			  if (teleport_mode) then engine.print('Около статуи Нуи, бегу на спот... (отсчет '+inttostr(delay_between_tp)+' сек)',32768)
+			  else engine.print('Около статуи Нуи, бегу на спот',32768);
+				PathToSpotFromResp(resp_index);
+				bot_state := 1;
+			end
+			else
+			begin
+				if (teleport_mode) then
+				begin
+				  block_sticking_flag:= true;
+				  engine.print('В город не нужно, так что телепортируюсь на спот... (отсчет '+inttostr(delay_between_tp)+' сек)',8421504); 
+				  PathToSpotFromAnywhere();
+				  block_sticking_flag:= false;
+				end
+				else
+				begin 
+				  block_sticking_flag:= true; 
+					Skills.ByID(10594, skill_temp);
+					if (skill_temp.EndTime <> 0) then engine.print('Жду отката путевых заметок...',0);
+					while (skill_temp.EndTime <> 0) do delay(333);
+					Engine.StopMove;
+					print('Не смог найти себя, нужно на спот. Использую путевые заметки...');
+					Engine.UseSkill(skill_temp.ID);
+					while (User.cast.endtime <> 0) do delay(333);
+					delay(tp_delay*1000);
+				  block_sticking_flag:= false;
+				end;
+				bot_state := 8;
+			end;			
+		end;		
+	end;
+end;                    
+
+procedure Heal_by_skills_in_fight();
+begin
+      if Skills.ByName('Непрерывное исцеление', skill_temp) and (User.GlobalCoolDown = 0) and (User.HP < skill_heal_nepr_iscelenie) and (skill_temp.EndTime = 0) and (user.curmp > skill_temp.needmp) then
+        begin
+          if engine.useskill(14929,user) then delay(111);
+					if ((User.HP < 99) and (engine.useskill(14930,user))) then delay(111);
+					if ((User.HP < 99) and (engine.useskill(14931,user))) then delay(111);
+					if ((User.HP < 99) and (engine.useskill(14932,user))) then delay(111);
+					if ((User.HP < 99) and (engine.useskill(14933,user))) then delay(111);
+					Engine.SetTarget(Mob);
+					while (User.GlobalCoolDown <> 0) or (user.cast.endtime <> 0) do delay(111);
+					delay(999);
+				end;
+        
+      if Skills.ByName('Дар жизни', skill_temp) and (User.GlobalCoolDown = 0) and (User.BuffTime(220) = 0) and (User.BuffTime(3455) = 0) and (User.BuffTime(6903) = 0) and (User.HP < skill_heal_dar_jizni) and (user.curmp > skill_temp.needmp) then
+        begin 							  
+          if engine.useskill(skill_temp.id,user) then delay(111);                 
+          Engine.SetTarget(Mob);
+					while (User.GlobalCoolDown <> 0) or (user.cast.endtime <> 0) do delay(111);
+					delay(555);
+        end; 			
+          			  
+      if Skills.ByName('Энергетический щит', skill_temp0) and (User.GlobalCoolDown = 0) and Skills.ByName('Свет и тьма', skill_temp) and (skill_temp.EndTime = 0) and (skill_temp0.EndTime = 0) and (User.HP < skill_heal_svet_i_tjma) and (user.curmp > skill_temp.needmp) then
+        begin
+          if engine.useskill(skill_temp0.id,user) then delay(111);
+          if engine.useskill(skill_temp.id,user) then delay(111);
+          Engine.SetTarget(Mob);
+					while (User.GlobalCoolDown <> 0) or (user.cast.endtime <> 0) do delay(111);
+					delay(555);
+        end;
+				
+      if Skills.ByName('Свет и тьма', skill_temp) and (User.GlobalCoolDown = 0) and (User.HP < skill_heal_svet_i_tjma) and (skill_temp.EndTime = 0) and (user.curmp > skill_temp.needmp) then
+        begin
+          Engine.StopMove();
+          if Engine.UseSkill(skill_temp.id,user) then while (User.GlobalCoolDown <> 0) or (user.cast.endtime <> 0) do delay(111);      
+        end;
+        
+      if Skills.ByName('Клич жизни', skill_temp) and (User.GlobalCoolDown = 0) and (User.HP < skill_heal_klich_jizni) and (skill_temp.EndTime = 0)and (user.bufftime(864) <> 0) and (user.curmp > skill_temp.needmp) then
+        begin
+          if Engine.UseSkill(skill_temp.id,user) then while (User.GlobalCoolDown <> 0) or (user.cast.endtime <> 0) do delay(111);
+          delay(555);
+        end;  
+            
+      if Skills.ByName('Имитация смерти', skill_temp) and (User.GlobalCoolDown = 0) and (User.HP < 11) and (skill_temp.EndTime = 0) then
+        begin
+          Engine.StopMove();
+          if Engine.UseSkill(skill_temp.id,user) then delay(111);
+          while (User.cast.endtime <> 0) and (user.hp < 88) do delay(555);
+          if (User.cast.endtime <> 0) and (user.hp >= 85) then
+            if engine.dmoveto(user.x+random(5)-2, user.y+random(5)-2, user.z) then delay(333); 
+        end; 
+        
+      if Skills.ByName('Медитация', skill_temp) and (User.GlobalCoolDown = 0) and (user.endcombat) and (User.MP < skill_heal_meditaciya) and (skill_temp.EndTime = 0) and (user.curmp > skill_temp.needmp) then
+        begin
+          Engine.StopMove();
+          if Engine.UseSkill(skill_temp.id,user) then delay(111);
+          while ((User.cast.endtime <> 0) and (user.mp < 97)) do delay(555);
+          delay(555);
+        end;
+        
+      if Skills.ByName('Имитация смерти', skill_temp) and (User.GlobalCoolDown = 0) and (user.endcombat) and (User.MP < skill_heal_fake_death) and (skill_temp.EndTime = 0) and (user.curmp > skill_temp.needmp) then
+        begin
+          Engine.StopMove();
+          if Engine.UseSkill(skill_temp.id,user) then delay(111);
+          while ((User.cast.endtime <> 0) and (user.mp < 97)) do delay(555);
+          if (User.cast.endtime <> 0) and (user.mp >= 95) then
+            if engine.dmoveto(user.x+random(5)-2, user.y+random(5)-2, user.z) then delay(333);
+        end;
+        
+      if Skills.ByName('Щедрый дар', skill_temp) and (User.GlobalCoolDown = 0) and (User.curmp < user.maxmp-1000) and (skill_temp.EndTime = 0) and (user.curmp > skill_temp.needmp) then
+        begin
+          if Engine.UseSkill(skill_temp.id,user) then while (User.GlobalCoolDown <> 0) or (user.cast.endtime <> 0) do delay(111);
+          delay(555);
+        end;         
+end;
+
+procedure Heal_by_potions_in_fight();
+begin
+  if (User.MP < potion_min_mp) and inv.ByName(potion_mp_name, potion) and (User.GlobalCoolDown = 0) and (potion.endtime = 0) then Engine.UseItem(potion.id);
+  if (User.HP < potion_min_hp) and inv.ByName(potion_hp_name, potion) and (User.GlobalCoolDown = 0) and (potion.endtime = 0) then Engine.UseItem(potion.id);
+end;
+
+procedure buff_by_items();
+var k: byte;
+begin
+  for k:= 1 to items_to_buff_length do begin
+    if inv.byname(buff_item_name[k], item) and (user.bufftime(items_buff_name[k]) < 7777) and (item.endtime = 0) then engine.useitem(buff_item_name[k]);
+  end;
+end;
+
+procedure Open_wallets();
+begin
+  if (user.CurLP > wallet_or) and (inv.byname('*кошелек',Item)) and (User.GlobalCoolDown = 0) and (User.Cast.EndTime = 0) then
+  begin
+    engine.StopMove;
+    engine.UseItem(Item.id);
+    while (User.Cast.EndTime <> 0) do delay(333);
+  end;
+  
+  if (user.CurLP > wallet_or) and (inv.byname('*ешочек',Item)) and (User.GlobalCoolDown = 0) and (User.Cast.EndTime = 0) then
+  begin
+    engine.StopMove;
+    engine.UseItem(Item.id);
+    while (User.Cast.EndTime <> 0) do delay(333);
+  end;
+end;
+
+procedure Open_north_armour();
+begin
+  if (user.CurLP > north_armour_or) and (inv.byname('*доспех обетованной земли',Item)) and (User.GlobalCoolDown = 0) and (User.Cast.EndTime = 0) then
+  begin
+    engine.StopMove;
+    engine.UseItem(Item.id);
+    while (User.Cast.EndTime <> 0) do delay(333);
+  end;
+  
+  if (user.CurLP > north_armour_or) and (inv.byname('*неопознанный предмет',Item)) and (User.GlobalCoolDown = 0) and (User.Cast.EndTime = 0) then
+  begin
+    engine.StopMove;
+    engine.UseItem(Item.id);
+    while (User.Cast.EndTime <> 0) do delay(333);
+  end;   
+end;
+           
+procedure Delete_drop();
+var i: integer;
+begin
+  for i:= 0 to inv.count-1 do begin                                                                                                                           
+    if (inv(i).gettype = 1) and (inv(i).price < max_delete_price) and (inv(i).Grade <= max_delete_color) then
+      if (engine.DestroyItem(inv(i).id)) then engine.print('Удаляю хлам: '+inv(i).name,0);
+  end;
+end; 
+
+procedure Decomposition_for_akhium(); 
+var i: integer;
+begin 
+  for i:= 0 to inv.count-1 do begin
+    if (inv(i).gettype = 1) and (inv(i).Grade >= min_decomp_color) and (inv(i).Grade <= max_delete_color) then begin
+      engine.stopmove;
+      if engine.useitem(inv(i).id, true) then engine.print('Ломаю на акхиум: '+inv(i).name,0);
+      while (User.Cast.EndTime <> 0) or (User.GlobalCoolDown <> 0) do delay(555);
+    end;
+  end;
+end;
+
+procedure music_regen();
+var tmp_item: TItem;
+begin 
+  engine.canceltarget;
+  if (User.MP < music_min_MP) then
+  begin    
+		while ((User.GlobalCoolDown <> 0) and (User.Cast.EndTime <> 0)) do delay(333);
+		while (User.MP < music_max_mp) and (not user.dead) and (User.EndCombat) and delay(111) do begin		
+		  block_sticking_flag:= true;
+      if (debug_logs) and timerex(d20,3333) then engine.print('procedure music_regen: _жду регена MP: ('+inttostr(user.mp)+' / '+inttostr(music_max_mp)+ ')',8388608);
+      if (not User.EndCombat) and delay(111) then
+				begin               
+				  if (debug_logs) then engine.print('procedure music_regen: _сагрился моб, пока регенился',8388608);
+          engine.dmoveto(user.x+random(5)-2,user.y+random(5)-2,user.z);
+          delay(44);
+				  exit;
+				end;
+		  if Engine.MoveItem(inv.GetItem('*лейта'), Equips, 18) then begin end
+		  else Engine.MoveItem(inv.GetItem('*ларнет'), Equips, 18);
+		  while (User.GlobalCoolDown <> 0) do delay(555);
+		  engine.StopMove;
+		  if (equips.byslot(18, tmp_item)) and (tmp_item.endtime = 0) then 
+		    if Engine.useskill('Игра на флейте') then if (debug_logs) then engine.print('procedure music_regen: _играю на флейте',8388608);
+		    while (User.Cast.EndTime <> 0) do begin
+			    delay(111);
+			    if (not User.EndCombat) and delay(111) then begin               
+				    if (debug_logs) then engine.print('procedure music_regen: _сагрился моб, пока играл на дудке',8388608);
+				    engine.dmoveto(user.x+random(5)-2,user.y+random(5)-2,user.z);
+				    delay(44);
+				    exit;
+			    end;
+			  end;     
+		  block_sticking_flag:= false;
+		end;
+  end;
+  
+  if (User.HP < music_min_HP) then
+  begin 
+		while ((User.GlobalCoolDown <> 0) and (User.Cast.EndTime <> 0)) do delay(333);
+		while (User.HP < music_max_hp) and (not user.dead) and (User.EndCombat) and delay(111) do begin
+		  block_sticking_flag:= true;
+      if (debug_logs) and timerex(d20,3333) then engine.print('procedure music_regen: _жду регена HP: ('+inttostr(user.hp)+' / '+inttostr(music_max_hp)+')',8388608);
+      if (not User.EndCombat) and delay(111) then
+				begin               
+				  if (debug_logs) then engine.print('procedure music_regen: _сагрился моб, пока регенился',8388608);
+          engine.dmoveto(user.x+random(5)-2,user.y+random(5)-2,user.z);
+          delay(44);
+				  exit;
+				end;
+		  Engine.MoveItem(inv.GetItem('*ютня'), Equips, 18);
+		  while (User.GlobalCoolDown <> 0) do delay(555);
+		  engine.StopMove;
+		  if (equips.byslot(18, tmp_item)) and (tmp_item.endtime = 0) then
+		    if Engine.useskill('Мелодия исцеления') then if (debug_logs) then engine.print('procedure music_regen: _играю на лютне',8388608);
+		    while (User.Cast.EndTime <> 0) do begin
+			    delay(111);
+			    if (not User.EndCombat) and delay(111) then begin
+				    if (debug_logs) then engine.print('procedure music_regen: _сагрился моб, пока играл на лютне',8388608);
+				    engine.dmoveto(user.x+random(5)-2,user.y+random(5)-2,user.z);
+				    delay(44);
+				    exit;
+				  end;
+			  end;
+		  block_sticking_flag:= false;
+		end;
+  end;  
+  
+end;
+
+procedure Check_buffs();
+begin
+  { Просвещение - Благословение божества }
+  if (Skills.ByName('Просвещение',skill_temp)) {and (User.BuffTime('*Благословение божества') < 66666) and (User.BuffTime('*Aranzeb') < 66666)} and (User.BuffTime(2955) < 66666) and (User.BuffTime(2956) < 66666) and (skill_temp.endtime = 0) then
+    begin
+      engine.StopMove;
+      delay(111);
+      if (Engine.UseSkill(skill_temp.id,user)) then delay(111);
+      while (User.Cast.EndTime <> 0) or (User.GlobalCoolDown <> 0) do delay(555);
+      delay(555);
+    end;
+
+  { Жертвенный огонь - Благословение }
+  if (Skills.ByName('Жертвенный огонь',skill_temp)) and (User.BuffTime(552) < 11111) and (skill_temp.endtime = 0) then
+    begin  
+      if (Engine.UseSkill(skill_temp.id,user)) then delay(111);
+      while (User.Cast.EndTime <> 0) or (User.GlobalCoolDown <> 0) do delay(555);
+      delay(555);
+    end;
+
+  { Дух сокола - Дух сокола }
+  if (Skills.ByName('Дух сокола',skill_temp)) and (User.BuffTime(451) < 66666) and (User.BuffTime(452) < 66666) and (User.BuffTime(453) < 66666) and (User.BuffTime(454) < 66666) and (skill_temp.endtime = 0) then
+    begin
+      if (Engine.UseSkill(skill_temp.id,user)) then delay(111);
+      while (User.Cast.EndTime <> 0) or (User.GlobalCoolDown <> 0) do delay(555);
+      delay(555);
+    end;
+
+  { Жизненная сила - Жизненная сила }
+  if (Skills.ByName('Жизненная сила',skill_temp)) and (User.BuffTime('*Жизненная сила') < 66666) {and (User.BuffTime(794) < 66666) and (User.BuffTime(795) < 66666) and (User.BuffTime(796) < 66666)} and (skill_temp.endtime = 0) then
+    begin
+      engine.StopMove;
+      delay(111);
+      if (Engine.UseSkill(skill_temp.id,user)) then delay(111);
+      while (User.Cast.EndTime <> 0) or (User.GlobalCoolDown <> 0) do delay(555);
+      delay(555);
+    end;
+
+  { Второе дыхание - Второе дыхание }
+  if (Skills.ByName('Второе дыхание',skill_temp)) and (User.BuffTime(1417) < 66666) and (User.BuffTime(1418) < 66666) and (User.BuffTime(1419) < 66666) and (User.BuffTime(1420) < 66666) and (User.BuffTime(1421) < 66666) and (skill_temp.endtime = 0) then
+    begin
+      if (Engine.UseSkill(skill_temp.id,user)) then delay(111);
+      while (User.Cast.EndTime <> 0) or (User.GlobalCoolDown <> 0) do delay(555);
+      delay(555);
+    end;
+
+  { Заживление ран - Быстрое заживление ран }
+  if (Skills.ByName('Заживление ран',skill_temp)) and (User.BuffTime(1426) < 66666) and (User.BuffTime(1427) < 66666) and (User.BuffTime(1428) < 66666) and (User.BuffTime(1429) < 66666) and (skill_temp.endtime = 0) then
+    begin
+      if (Engine.UseSkill(skill_temp.id,user)) then delay(111);
+      while (User.Cast.EndTime <> 0) or (User.GlobalCoolDown <> 0) do delay(555);
+      delay(555);
+    end;
+    
+  { Магический щит - Магический щит }
+  if (Skills.ByName('Магический щит',skill_temp)) and (User.BuffTime(426) = 0) and (User.BuffTime(427) = 0) and (User.BuffTime(428) = 0) and (User.BuffTime(429) = 0) and (skill_temp.endtime = 0) then
+    begin
+      engine.StopMove;
+      delay(111);
+      if (Engine.UseSkill(skill_temp.id,user)) then delay(111);
+      while (User.Cast.EndTime <> 0) or (User.GlobalCoolDown <> 0) do delay(555);
+      delay(555);
+    end;
+    
+  { Гимн мудрости - Гимн мудрости }
+  if (Skills.ByName('Гимн мудрости',skill_temp)) and (User.BuffTime(462) < 66666) and (User.BuffTime(463) < 66666) and (User.BuffTime(464) < 66666) and (User.BuffTime(465) < 66666) and (User.BuffTime(466) < 66666) and (skill_temp.endtime = 0) then
+    begin
+      engine.StopMove;
+      delay(111);
+      if (Engine.UseSkill(skill_temp.id,user)) then delay(111);
+      while (User.Cast.EndTime <> 0) or (User.GlobalCoolDown <> 0) do delay(555);
+      delay(555);
+    end; 
+    
+  { Транс - Транс }
+  if (Skills.ByName('Транс',skill_temp)) and (User.BuffTime(542) < 11111) and (skill_temp.endtime = 0) then
+    begin
+      engine.StopMove;
+      delay(111);
+      if (Engine.UseSkill(skill_temp.id,user)) then delay(111);
+      while (User.Cast.EndTime <> 0) or (User.GlobalCoolDown <> 0) do delay(555);
+      delay(555);
+    end;    
+    
+  { Очищение - Улучшенное сопротивление }
+  if(Skills.ByName('Очищение',skill_temp)) and (User.BuffTime(11) < 11111) and (skill_temp.endtime = 0) then
+    begin
+      if (Engine.UseSkill(skill_temp.id,user)) then delay(111);
+      while (User.Cast.EndTime <> 0) or (User.GlobalCoolDown <> 0) do delay(555);
+      delay(555);
+    end;  
+    
+  { Пробуждение - Пробуждение }
+  if (Skills.ByName('Пробуждение',skill_temp)) and (User.BuffTime(499) < 6666) and (skill_temp.endtime = 0) then
+    begin
+      if (Engine.UseSkill(skill_temp.id,user)) then delay(111);
+      while (User.Cast.EndTime <> 0) or (User.GlobalCoolDown <> 0) do delay(555);
+      delay(555);
+    end;    
+    
+end;
+
+procedure bow_attack();
+begin
+	Skills.ByName('Стрельба из лука',skill_temp);
+	if (user.distto(user.target)< skill_temp.maxrange-1) and engine.useskill(skill_temp.id) then delay(333); 
+end;
+
+procedure attack_first_skill();
+begin
+  Engine.StopMove();
+  if (Engine.UseSkill(first_attack.id)) then while ((User.cast.endtime <> 0) or (User.GlobalCoolDown <> 0)) do delay(111);
+  dmtfa:= 0;
+end;
+
+procedure main_dps_skills();
+begin
+  if (main_dps_skill = 'Сгустки пламени') and
+    (Skills.ByName('Сгустки пламени', skill_temp) and 
+		(skill_temp.EndTime = 0) and
+		(User.GlobalCoolDown = 0) and
+		(user.cast.endtime = 0)) then
+		  if (User.CurMP >= skill_temp.needmp) then
+		    begin 		    
+				  Engine.StopMove;
+				  if Engine.UseSkill(skill_temp.id) then while (User.Cast.EndTime <> 0) do delay(222);   //10752
+				  if Engine.UseSkill(24894) then delay(222); 
+				  if Engine.UseSkill(24895) then delay(111);
+				  delay(111);
+				  exit;
+		    end
+        else bow_attack();
+        
+  if (main_dps_skill = 'Клинки смерти') and
+    (Skills.ByName('Клинки смерти', skill_temp) and
+    (User.MP >= skill_temp.needmp) and  
+		(skill_temp.EndTime = 0) and
+		(User.GlobalCoolDown = 0) and
+		(user.cast.endtime = 0)) then 
+		  if (User.CurMP >= skill_temp.needmp) then
+		    begin
+				  if Engine.UseSkill(skill_temp.id) then while (User.Cast.EndTime <> 0) or (User.GlobalCoolDown <> 0) do delay(333);
+				  exit;
+		    end
+        else bow_attack();
+		  
+  if (main_dps_skill = 'Азарт мстителя') and
+    (skills.ByName('Азарт мстителя', skill_temp) and
+    (User.MP >= skill_temp.needmp) and  
+		(skill_temp.EndTime = 0) and
+		(User.GlobalCoolDown = 0) and
+		(user.cast.endtime = 0)) then
+		  if (User.CurMP >= skill_temp.needmp) then
+		    begin
+				  Engine.StopMove;
+				  if Engine.UseSkill(skill_temp.id) then while (User.Cast.EndTime <> 0) or (User.GlobalCoolDown <> 0) do delay(333);
+				  exit;
+		    end
+        else bow_attack();
+		  
+  if (main_dps_skill = 'Потрошение') and
+    (Skills.ByName('Потрошение', skill_temp) and
+    (User.MP >= skill_temp.needmp) and  
+		(skill_temp.EndTime = 0) and
+		(User.GlobalCoolDown = 0) and
+		(user.cast.endtime = 0)) then
+		  if (User.CurMP >= skill_temp.needmp) then
+		    begin
+				  if Engine.UseSkill(skill_temp.id) then while (User.Cast.EndTime <> 0) or (User.GlobalCoolDown <> 0) do delay(333);
+				  exit;
+		    end
+        else bow_attack();
+		  
+  if (main_dps_skill = 'Тройной удар') and
+    (Skills.ByName('Тройной удар', skill_temp) and
+    (User.CurMP >= skill_temp.needmp) and  
+		(skill_temp.EndTime = 0) and
+		(User.GlobalCoolDown = 0) and
+		(user.cast.endtime = 0)) then
+		  if (User.CurMP >= skill_temp.needmp) then
+		    begin
+				  if engine.useskill(skill_temp.id) then delay(555);
+				  if engine.useskill(18134) then delay(555);
+				  if engine.useskill(18131) then delay(555);
+				  exit;
+		    end
+        else bow_attack(); 
+end;
+
+procedure fight_stances();
+begin
+  if (Skills.ByName('Магический круг',skill_temp) and (Mob.HP > stance_min_hp)) then
+	  if ((User.GlobalCoolDown = 0) and (User.cast.endtime = 0) and (user.bufftime(1248)=0) and (user.bufftime(1249)=0)) then
+		  begin
+			  Engine.StopMove();
+				if (Engine.UseSkill(skill_temp.id)) then while (User.GlobalCoolDown <> 0) do delay(333);
+				exit;
+		  end;
+		  
+  if (Skills.ByName('Стойка лучника',skill_temp) and (Mob.HP > stance_min_hp)) then
+	  if ((User.GlobalCoolDown = 0) and (User.cast.endtime = 0) and (user.bufftime(2170)=0) and (user.bufftime(2172)=0) and (user.bufftime(2173)=0) and (user.bufftime(2175)=0)) then
+		  begin
+			  Engine.StopMove();
+				if (Engine.UseSkill(skill_temp.id)) then while (User.GlobalCoolDown <> 0) do delay(333);
+				exit;
+		  end;
+		  
+end;
+
+procedure rush_skills();
+begin 
+  if (Skills.ByName('Зловещая тень',skill_temp) and (User.GlobalCoolDown = 0) and (User.cast.endtime = 0) and (Mob.HP > 11) and (mob.bufftime(815) = 0)) then
+    if (User.DistTo(user.target) <= skill_temp.MaxRange) and (User.DistTo(user.target) > 9) and (Engine.UseSkill(skill_temp.id)) then while (User.GlobalCoolDown <> 0) do delay(333);
+  
+  if (Skills.ByName('Рывок',skill_temp) and (User.GlobalCoolDown = 0) and (User.cast.endtime = 0) and (Mob.HP > 11) and (mob.bufftime(815) = 0)) then    
+    if (User.DistTo(user.target) <= skill_temp.MaxRange) and (User.DistTo(user.target) > 5) and (Engine.UseSkill(skill_temp.id)) then while (User.GlobalCoolDown <> 0) do delay(333);
+
+  if (Skills.ByName('Бросок кобры',skill_temp) and (User.GlobalCoolDown = 0) and (User.cast.endtime = 0) and (Mob.HP > 11) and (mob.bufftime(815) = 0)) then 
+    if (User.DistTo(user.target) <= skill_temp.MaxRange - 1) and (User.DistTo(user.target) > 5) and (Engine.UseSkill(skill_temp.id)) then while (User.GlobalCoolDown <> 0) do delay(333);
+
+end;
+
+procedure ultimate_skills();
+begin 
+  if (Skills.ByName('Неистовство',skill_temp)) and (skill_temp.endtime = 0) and (not user.endcombat) and (User.DistTo(user.target) < range_attack) and (Mob.HP > 44) then   
+    if Engine.UseSkill(skill_temp.id) then while (User.GlobalCoolDown <> 0) do delay(111);
+    
+  if (Skills.ByName('Адреналин',skill_temp)) and (skill_temp.endtime = 0) and (not user.endcombat) and (User.DistTo(user.target) < range_attack) and (Mob.HP > 44) then   
+    if Engine.UseSkill(skill_temp.id) then while (User.GlobalCoolDown <> 0) do delay(111);
+    
+  if (Skills.ByName('Доспехи мести',skill_temp)) and (skill_temp.endtime = 0) and (not user.endcombat) and (User.DistTo(user.target) < range_attack) and (User.HP < 66) and (Mob.HP > 44) then   
+    if Engine.UseSkill(skill_temp.id) then while (User.GlobalCoolDown <> 0) do delay(111);
+    
+  if (Skills.ByName('Глухая оборона',skill_temp)) and (skill_temp.endtime = 0) and (not user.endcombat) and (User.DistTo(user.target) < range_attack) and (User.HP < 66) and (Mob.HP > 44) then   
+    if Engine.UseSkill(skill_temp.id) then while (User.GlobalCoolDown <> 0) do delay(111);
+    
+  if (Skills.ByName('Инстинкт выживания',skill_temp)) and (skill_temp.endtime = 0) and (not user.endcombat) and (User.DistTo(user.target) < range_attack) and (Mob.HP > 44) then   
+    if Engine.UseSkill(skill_temp.id) then while (User.GlobalCoolDown <> 0) do delay(111);
+    
+  if (Skills.ByName('Проворство',skill_temp)) and (skill_temp.endtime = 0) and (not user.endcombat) and (User.DistTo(user.target) < range_attack) and (Mob.HP > 44) then   
+    if Engine.UseSkill(skill_temp.id) then while (User.GlobalCoolDown <> 0) do delay(111);
+
+end;
+
+procedure option_skills();
+var i: byte;
+tmp_skill, tmp_skill_2: Tskill;
+begin  
+  for i:= 1 to 9 do begin
+    if (Skills.ByID(attack_skill[i].ID, skill_temp) and
+    (Mob.HP >= attack_skill_min_target_hp[i]) and
+		(Mob.HP <= attack_skill_max_target_hp[i]) and
+		(User.HP >= attack_skill_min_user_hp[i]) and
+		(User.HP <= attack_skill_max_user_hp[i]) and
+		(User.MP >= attack_skill_min_user_mp[i]) and
+		(User.MP <= attack_skill_max_user_mp[i]) and         
+		(User.distto(user.target) >= attack_skill_min_dist[i]) and
+		(User.distto(user.target) <= attack_skill_max_dist[i]) and 		
+		((attack_skill_target_effect[i] = '') or (User.target.bufftime(attack_skill_target_effect[i]) <> 0)) and
+		((attack_skill_rdy_to_use[i] = '') or ((skills.byname(attack_skill_rdy_to_use[i], tmp_skill)) and (tmp_skill.endtime = 0))) and
+		(User.CurMP >= skill_temp.needmp) and  
+		(User.cast.endtime = 0) and
+		(User.GlobalCoolDown = 0) and
+		(skill_temp.EndTime = 0)) then
+		  begin
+			  Engine.StopMove;
+				if Engine.UseSkill(attack_skill[i].id) then while (User.Cast.EndTime <> 0) or (User.GlobalCoolDown <> 0) do delay(111);
+				delay(111);
+				delay(attack_skill_delay_after_use[i]);				
+			end;
+  end;			
+end;
+
+procedure hardcode_skills();
+var tmp_skill, tmp_skill_2: Tskill;
+begin
+  if (Skills.ByName('Сокрушение разума',tmp_skill)) and (Skills.ByName('Хватка земли',tmp_skill_2)) and
+  (tmp_skill.endtime = 0) and (tmp_skill_2.endtime = 0) and (user.hp <= skill_heal_witchcraft) and
+  (User.DistTo(user.target) <= 20) and (Mob.HP > witchcraft_target_min_hp) then begin
+    while (user.globalcooldown <> 0) or (user.cast.endtime <> 0) do delay(333);
+    delay(777);
+    engine.stopmove;
+    while (user.globalcooldown <> 0) or (user.cast.endtime <> 0) do delay(333);
+    if engine.useskill(tmp_skill.id) then begin 
+      while (user.globalcooldown <> 0) or (user.cast.endtime <> 0) do delay(555);
+      delay(999);
+      engine.stopmove;
+      if engine.useskill(tmp_skill_2.id) then delay(555)
+      else delay(555);
+      if engine.useskill(tmp_skill_2.id) then delay(555);
+      //if engine.useskill(tmp_skill_2.id) then delay(555);
+      while (user.globalcooldown <> 0) or (user.cast.endtime <> 0) do delay(111);        
+    end;
+  end;   
+end;
+
+procedure check_spot();
+begin
+  if (User.DistTo(c_Spot_x, c_Spot_y, c_Spot_z) > range_spot + 10) and (Status = lsOnline) then  // Если мы убежали со спота на 10+ метров
+    if (User.DistTo(c_Spot_x, c_Spot_y, c_Spot_z) < range_spot + 30) then  // Но при это не больше, чем на 30 метров, то
+    begin
+      Engine.CancelTarget;  // Отменяем текущую цель
+      mob:= nil;
+      //if (teleport_mode) then Engine.fastMoveTo(c_Spot_x, c_Spot_y, c_Spot_z+2)
+      //else Engine.MoveTo(c_Spot_x, c_Spot_y, c_Spot_z); // Бежим обратно в центра спота
+      Mob := GetBestMob();  // Ищем новую цель
+    end
+    else  // Если же убежали дальше, чем на 30 метров, то 
+    begin
+      if (teleport_mode) and (not needintown()) then
+        begin
+				  block_sticking_flag:= true; 
+          engine.print('Потерялся\столкнули со спота, жду '+inttostr(delay_between_tp)+' сек и делаю ТП на спот',128); 
+				  PathToSpotFromAnywhere();
+				  block_sticking_flag:= false;
+        end;
+      if (teleport_mode) then
+        begin
+				  block_sticking_flag:= true;
+          engine.print('Потерялся\столкнули со спота, жду '+inttostr(delay_between_tp)+' сек и делаю ТП в город',128);
+          delay(delay_between_tp*1000);
+          //engine.teleport(c_Smith_x, c_Smith_y, c_Smith_z+2);  // Если функция ТП включена, делаем ТП в город
+          delay(tp_delay*1000);
+				  block_sticking_flag:= false;
+        end
+        else  // Если же она выключена, то
+        begin 
+          Skills.ByID(10594, skill_temp); // Проверяем скил Путевые заметки
+          while (skill_temp.EndTime <> 0) do delay(500); // Пока он не готов к использованию - ждем 		
+          Engine.StopMove;
+          engine.print('Потерялся\столкнули со спота, юзаю путевые заметки',128);
+          Engine.UseSkill(skill_temp.ID);
+          while (User.cast.endtime <> 0) do delay(100);
+          delay(tp_delay*1000);
+        end;
+        bot_state := 8; // Переходим на 8ое состояние и выходим отсюда
+        //Break;
+      end;
+
+end;   
+
+procedure change_not_valid_target();
+var i: integer;
+begin 
+  //if (debug_logs) then engine.print('Script.NewThread(@change_not_valid_target);',16711935);
+  while delay(111) do begin
+  //print('GetTickCount: '+inttostr(GetTickCount)+';  mob_ignoring: '+inttostr(mob_ignoring)+';  TIMER: '+booltostr_self(GetTickCount > mob_ignoring));
+  if (user.target = nil) or (user.target.hp <> 100) then mob_ignoring := GetTickCount + time_to_ignore_mob*1000;
+  delay(111);
+  if (user.bufftime('*Бессилие') <> 0) then mob_ignoring := GetTickCount + time_to_ignore_mob*1000;
+  //if (debug_logs) and timerex(dl6,33333) then engine.print('thread is active: change_not_valid_target',8421376);
+  if (user.target <> nil) and (user.cast.endtime = 0) and (User.GlobalCoolDown = 0) {and (not User.Moved)} and (Status = lsOnline) then
+  if (User.Target.HP = 100) and (user.target.target = nil) and (not block_cnvt) then
+  begin  
+    for i := 0 to mobs.count-1 do
+    begin
+      if (mobs(i).target = user) and (user.distto(mobs(i)) < user.distto(user.target)) and (user.distto(mobs(i)) < 22) and (not user.endcombat) and (not mobs(i).dead) and (mobs(i).hp <> 0) and (mobs(i).GameClass <> otPlayer) and (mobs(i).name <> black_list_mob_name1) and (mobs(i).name <> black_list_mob_name2) and (mobs(i).name <> black_list_mob_name3) then
+      begin
+        Mob := nil;
+        engine.stopmove;
+        if (debug_logs) then engine.print('procedure change_not_valid_target: _заагрился другой моб: '+mobs(i).name+' (дистанция: '+ftostr(user.distto(mobs(i)))+' m, HP: '+inttostr(mobs(i).hp)+')',255);
+        engine.canceltarget;
+        Mob := mobs(i);
+      end;    
+    end;
+    delay(55);
+    if (abs(User.Z - user.target.Z) >= Z_limit) then
+    begin
+      ignored_mob:= Mob;
+      delay(555);
+      if (debug_logs) then engine.print('procedure change_not_valid_target: _большая разница в координате Z: '+ignored_mob.name+' (дистанция: '+ftostr(user.distto(mobs(i)))+' m, HP: '+inttostr(mobs(i).hp)+')',8388608);
+      Mob := nil;
+      engine.stopmove;
+      engine.canceltarget;
+      mob := getbestmob();
+    end;
+    delay(55);
+    if (GetTickCount > mob_ignoring) and (User.Target.HP = 100) then
+      if (user.cast.endtime <> 0) or (User.GlobalCoolDown <> 0) then mob_ignoring := GetTickCount + time_to_ignore_mob*1000
+      else 
+      begin
+        ignored_mob:= Mob;
+        delay(555);
+        if (debug_logs) then engine.print('procedure change_not_valid_target: _не менялось хп, поэтому заигнорил моба: '+ignored_mob.name+' (дистанция: '+ftostr(user.distto(mobs(i)))+' m, HP: '+inttostr(mobs(i).hp)+')',8388608);
+        Mob := nil;
+        engine.stopmove;
+        engine.canceltarget;
+        mob := getbestmob();
+        mob_ignoring := GetTickCount + time_to_ignore_mob*1000;
+      end;
+    delay(55);
+    if (User.Target.name = '') or (User.Target.name = ' ') then
+    begin
+      ignored_mob:= Mob;
+      delay(555);
+      if (debug_logs) then engine.print('procedure change_not_valid_target: _взял в таргет фантомного моба: '+ignored_mob.name+' (дистанция: '+ftostr(user.distto(mobs(i)))+' m, HP: '+inttostr(mobs(i).hp)+')',8388608);
+      Mob := nil;
+      engine.stopmove;
+      engine.canceltarget;
+      mob := getbestmob();
+    end;
+    delay(55);
+    if (Mob.target <> nil) and (Mob.target <> user) and (Mob.hp > 77) then
+    begin
+      ignored_mob:= Mob;
+      delay(555); 
+      if (debug_logs) then engine.print('procedure change_not_valid_target: _моба переагрил кто-то другой: '+ignored_mob.name+' (дистанция: '+ftostr(user.distto(mobs(i)))+' m, HP: '+inttostr(mobs(i).hp)+')',8388608);
+      Mob := nil;
+      engine.stopmove;
+      engine.canceltarget;
+      mob := getbestmob();
+    end;
+    delay(55);
+    if (user.target.dead) {or (mob.dead)} then
+    begin
+      ignored_mob:= Mob;
+      delay(555);
+      if (debug_logs) then engine.print('procedure change_not_valid_target: _наша цель уже мертва: '+ignored_mob.name+' (дистанция: '+ftostr(user.distto(mobs(i)))+' m, HP: '+inttostr(mobs(i).hp)+')',8388608);
+      Mob := nil;
+      engine.canceltarget;
+    end;
+  
+  end;
+end;
+end; 
+
+procedure check_disconnect();
+begin
+//if (debug_logs) then engine.print('Script.NewThread(@check_disconnect);',16711935);
+while delay(1111) do begin
+  //if (debug_logs) and timerex(dl4,33333) then engine.print('thread is active: check_disconnect;',8421376);
+  if (Status <> lsOnline) then
+    begin
+      engine.print('Дисконект, надеюсь был запущен контроль окон ,)',128);
+      delay(5555);
+      script.replace;       
+    end;
+end;
+end;
+
+procedure check_GM();
+var i: integer;
+begin 
+//if (debug_logs) then engine.print('Script.NewThread(@check_GM);',16711935);
+while delay(1111) do begin             
+  //if (debug_logs) and timerex(dl5,33333) then engine.print('thread is active: check_GM;',8421376);
+  for i:=0 to players.count-1 do begin
+	  if (pos('*[', players(i).name) > 0) or
+    (pos('луций', LowerCase(players(i).name)) > 0) or
+    (pos('кипроза', LowerCase(players(i).name)) > 0) or
+    (pos('мелисара', LowerCase(players(i).name)) > 0) or
+    (pos('таян', LowerCase(players(i).name)) > 0) or
+    (pos('аранзебия', LowerCase(players(i).name)) > 0) or
+    (pos('олло', LowerCase(players(i).name)) > 0) or
+    (pos('анна', LowerCase(players(i).name)) > 0) or
+    (pos('аранзеб', LowerCase(players(i).name)) > 0) or
+    (pos('инох', LowerCase(players(i).name)) > 0) or
+    (pos('джин', LowerCase(players(i).name)) > 0) or
+    (pos('орхидна', LowerCase(players(i).name)) > 0) or
+    (pos('наима', LowerCase(players(i).name)) > 0) or
+    (pos('анталлон', LowerCase(players(i).name)) > 0) or
+    (pos('шатигон', LowerCase(players(i).name)) > 0) or
+    (pos('айэр', LowerCase(players(i).name)) > 0) or
+    (pos('сальфира', LowerCase(players(i).name)) > 0) or
+    (pos('даута', LowerCase(players(i).name)) > 0) or
+    (pos('калеиль', LowerCase(players(i).name)) > 0) or
+    (pos('кириос', LowerCase(players(i).name)) > 0) or
+    (pos('акритес', LowerCase(players(i).name)) > 0) or
+    (pos('эншака', LowerCase(players(i).name)) > 0) or
+    (pos('ашабель', LowerCase(players(i).name)) > 0) or
+    (pos('капаган', LowerCase(players(i).name)) > 0) or 
+    (pos('невер', LowerCase(players(i).name)) > 0) then begin
+		  engine.print('Обнаружил ГМа: '+players(i).name+'; дистанция: '+inttostr(round(User.DistTo(players(i))))+'м',128);
+		  gm_flag := true;
+			break;
+		end;
+	end; 
+	delay(55);  
+	if (gm_flag) and (gm_runaway) and (Status = lsOnline) then
+	begin
+	  engine.print('Убегаю в город, чтобы переждать!',128);
+	  gm_flag := false;
+	  needintown_flag := true;
+	  RunToTownFromSpot();
+	  delay(gm_delay*1000);					
+	end; 
+	delay(55);
+  if (gm_flag) and (gm_stopacc) and (Status = lsOnline) then
+	begin
+	  gm_flag := false;
+	  Account.Stop('Отключаю аккаунт',128);
+	  script.replace; 
+	end;  
+	delay(55);
+  if (gm_flag) and (gm_logout) and (Status = lsOnline) then
+	begin
+	  gm_flag := false;
+	  gm_flag_2 := true;
+	  engine.print('Ухожу в релог на '+inttostr(round(gm_delay/60))+' минут',128);
+	  Engine.LeaveWorld();
+	  delay(gm_delay*1000);
+	  Engine.selectcharacter(char_num);         
+	  script.replace; 
+	end;
+end; 
+end;
+
+procedure return_to_spot_centr();
+begin
+  if (return_to_spot_centr_mode) and (user.target = nil) and (Status = lsOnline) and (user.endcombat) then
+	  if (user.distto(c_Spot_x, c_Spot_y, c_Spot_z) > 5) then
+	  begin
+	  if (debug_logs) then engine.print('procedure return_to_spot_centr: _возвращаюсь в центр спота',8388608);
+	  Engine.dMoveTo(c_Spot_x+random(3)-1, c_Spot_y+random(3)-1, c_Spot_z);
+	  delay(333);
+    end;
+end;
+
+procedure check_lvl();
+begin
+  if (user.level < min_lvl) or (user.level > max_lvl) then Account.Stop('Не подходит лвл (наш: '+inttostr(user.level)+', ['+inttostr(min_lvl)+','+inttostr(max_lvl)+']) , выключаюсь');
+end;
+
+procedure check_sticking();
+begin 
+//if (debug_logs) then engine.print('Script.NewThread(@check_sticking);',16711935);
+while delay(1111) do begin    
+  //if (debug_logs) and timerex(dl7,33333) then engine.print('thread is active: check_sticking;',8421376);
+  if (not block_sticking_flag) and TimerEx(sticking_timer,5000) and (Status = lsOnline) then
+  begin
+    if (csi > time_to_lag_restart/5) then
+    begin
+      csi:= 0;
+      if (debug_logs) then engine.print('procedure check_sticking: _залип, перезагружаю скрипт',8388608);
+      delay(3333);
+      script.replace;
+    end;
+    if (user.endcombat) and
+    (abs(lag_x - user.x)<=2) and
+    (abs(lag_y - user.y)<=2) and
+    (abs(lag_z - user.z)<=2) and
+    (user.distto(c_Nui[1,1], c_Nui[1,2], c_Nui[1,3]) >= 15) and
+    (user.distto(c_Nui[2,1], c_Nui[2,2], c_Nui[2,3]) >= 15) and
+    (user.distto(c_Town_x, c_Town_y ,c_Town_z) >= range_town) then
+    begin
+      csi:=csi+1;
+      //if (debug_logs) then engine.print('procedure check_sticking: i = ' +inttostr(csi),8388608);
+    end
+    else
+    begin
+      csi:= 0;
+      if (round(user.x) = lag_x) and (round(user.y) = lag_y) and (round(user.z) = lag_z) then continue;
+      lag_x := round(user.x);
+      lag_y := round(user.y);
+      lag_z := round(user.z);
+      //if (debug_logs) then engine.print('procedure check_sticking: _lag_x: '+ftostr(lag_x)+'  _lag_y: '+ftostr(lag_y)+'  _lag_z: '+ftostr(lag_z),8388608);
+    end;
+  end;
+end;
+end;
+
+procedure check_death();
+begin
+//if (debug_logs) then engine.print('Script.NewThread(@check_death);',16711935);
+while delay(5555) do begin  
+  //if (debug_logs) and timerex(dl3,33333) then engine.print('thread is active: check_death;',8421376);
+  //if (debug_logs) and timerex(dl8,11111) then engine.print('procedure check_death: _user.dead: '+BoolToStr_self(user.dead),8421376);
+  //if (debug_logs) and timerex(dl9,11111) then engine.print('procedure check_death: _user.hp: '+inttostr(user.hp),8421376);
+  if (user.distto(c_Spot_x, c_Spot_y, c_Spot_z) > range_spot) then 
+    if ((user.dead) or (user.hp = 0)) and (Status = lsOnline) then script.replace; 
+end;
+end;
+
+procedure waiting_regen();
+begin
+  if ((user.hp < music_max_hp) or (user.mp < music_max_mp)) and (user.endcombat) then Engine.useskill('Игра на флейте');
+end;
+
+procedure gm_flag_2_logout();
+begin
+  if (gm_flag_2) then
+  begin
+    if (debug_logs) then engine.print('procedure gm_flag_2_logout: _gm_flag_2: '+BoolToStr_self(gm_flag_2),8421376);
+    delay(3600000);
+  end;
+end;
+
+procedure chat_answer();
+var p1, p2: integer;
+begin
+  while delay(1111) do begin
+    case Engine.WaitAction([atChat], P1, P2, -1) of
+      atChat:
+        if (ChatMessage.Text = '*бот') then begin
+          print(ChatMessage.Nick+ ' пристает к нам ('+ChatMessage.Text+')');
+          delay(2222);
+          engine.say('мамка твоя бот',0);
+          engine.entertext('/block '+ChatMessage.Nick);
+        end;
+      atChat:  
+        if (ChatMessage.Text = 'farmwl?') then engine.entertext('ave good scr');
+        
+    end;
+  end;
+end;
+
+procedure check_bot_state();
+begin
+  if (bot_state = 1) then exit;
+  if (bot_state <> 1) then goto choose_bot_state;
+end;
+
+procedure check_NeedInTown();
+begin
+  if (NeedInTown() = true) then
+  begin
+    needintown_flag := true;
+  end;
+end;
+
+function search_pvp(): TPlayer;
+var i: integer;
+begin 
+	if (pvp_module) then begin
+	  for i := 0 to players.count-1 do begin
+	    if ((players(i).relation(user) = 1) {or (players(i).relation(user) = 3)}) and
+	    (user.distto(players(i)) < pvp_range) and
+	    (user.target = nil) and
+	    (not players(i).dead) and (players(i).hp <> 0) and
+	    (players(i).Valid) then begin
+	    enemy:= players(i);
+	    mob:= nil;
+      if (debug_logs) then engine.print('function search_pvp: _попался вражеский игрок: ' + players(i).name+' (дистанция: '+ftostr(user.distto(players(i)))+' m, HP: '+inttostr(players(i).hp)+')',8388608);
+      exit;
+	    end; 	      
+	  end;
+	end;
+end;
+
+procedure check_errors();
+begin
+  if (range_attack < 3) then engine.print('Установлена слишком маленькая дистанция атаки: range_attack: '+inttostr(range_attack)+' m',255);
+  if (range_attack > 44) then engine.print('Установлена слишком большая дистанция атаки: range_attack: '+inttostr(range_attack)+' m',255);
+  if (delay_between_tp < 300) then engine.print('Установлена слишком маленькая задержка между ТП: delay_between_tp: '+inttostr(delay_between_tp)+' сек',255);
+  if (max_range < range_spot*1.7) then engine.print('Реккомендуется увеличить значение MaxRange: '+ftostr(max_range),255);          
+  if (min_lvl > max_lvl) then engine.print('Некорректно указанного диапазон лвлов: _min_lvl: '+inttostr(min_lvl)+', max_lvl: '+inttostr(max_lvl),255);
+  if (not fight_type_range) and (not fight_type_melee) then engine.print('Не выбран тип боя: ни ближний, ни дальний',255);
+  if (gold_need_in_town < gold_to_send) then engine.print('Значение gold_to_send > gold_need_in_town, должно быть наоборот (запас ~10г на починку)',255);
+  if (music_min_hp > music_max_hp) then engine.print('Значение music_min_hp > music_max_hp',255);
+  if (music_min_mp > music_max_mp) then engine.print('Значение music_min_mp > music_max_mp',255);
+  
+end;
+{
+procedure xxx();
+begin
+ engine.print('Висит дебаф Suspected User, иду снимать',128);
+ delay(9999999);
+engine.print('Висит дебаф Suspected User, иду снимать',128);
+end;
+}
+procedure cancel_suspected_user();
+begin
+  if (user.bufftime(4861) <> 0) then begin
+    
+    if (user.race = rcAriharan) or (user.race = rcFerre) then begin
+      engine.print('Мы за восток, делаем ТП в Ост-Терру',0);
+      //if engine.teleport(17034.81, 8917.25, 261.09) then delay(3333);
+      Engine.MoveTo(17031.47, 8916.76, 259.78);
+      Engine.MoveTo(17030.94, 8903.14, 256.01);
+    end;
+
+    if (user.race = rcNuian) or (user.race = rcElf) then begin
+      engine.print('Мы за запад, делаем ТП в Мэрианхольд',0);
+      //if engine.teleport(11116.11, 12062.54, 245.51) then delay(3333);      
+      Engine.MoveTo(11109.79, 12065.12, 243.59);
+      Engine.MoveTo(11103.30, 12067.31, 243.84);
+      Engine.MoveTo(11101.45, 12070.53, 244.03);
+      Engine.MoveTo(11106.95, 12076.27, 243.80);
+      Engine.MoveTo(11103.77, 12078.22, 243.80);       
+    end;
+
+    Engine.MoveToobj(npcs.getnear('Судья'),1);
+    delay(1111);
+    Engine.settarget(npcs.getnear('Судья'));
+    delay(1111);
+    if engine.useskill(21335,npcs.getnear('Судья')) then while (user.cast.endtime <> 0) do delay(1111);
+    delay(3333);
+
+
+    if (user.bufftime(4861) = 0) and (Status = lsOnline) then
+      if (teleport_mode) then begin
+        block_sticking_flag:= true;
+        engine.print('Дебаф Suspected User снят, жду... (отсчет '+inttostr(delay_between_tp)+' сек)',8421504);
+        PathToSpotFromAnywhere();
+        Init();
+        block_sticking_flag:= false;
+        goto choose_bot_state;
+      end
+      else begin
+        block_sticking_flag:= true;
+				Skills.ByID(10594, skill_temp);
+				if (skill_temp.EndTime <> 0) then engine.print('Жду отката путевых заметок...',0);
+				while (skill_temp.EndTime <> 0) do delay(333);
+				Engine.StopMove;
+				engine.print('Дебаф Suspected User снят, использую путевые заметки...',0);
+				Engine.UseSkill(skill_temp.ID);
+				while (User.cast.endtime <> 0) do delay(1111);
+				delay(tp_delay*1000);
+        Init();
+				block_sticking_flag:= false;
+        goto choose_bot_state;
+      end;		
+    
+
+  end;
+end;
+ procedure pick_up_loot();     // Подбор дропа
+var i, loot_range: integer;
+begin
+  loot_range:= 20;  // Радиус подбора дропа
+  for i := 0 to mobs.count-1 do begin
+    while (mobs(i).lootable) and (User.DistTo(mobs(i)) < loot_range) and (inv.freeslot <> -1) do begin
+      if Engine.MoveToObj(mobs(i), random(2)+1) then if Engine.PickUp(mobs(i)) then delay(111+random(333));
+    end;
+  end;
+end;
+
+
+
+ 
+
+ 
+
+
+
+
+
+
+
+
+
+
+// ОСНОВНОЙ ПОТОК, ЕСЛИ ВЫ ЕГО ПОЛОМАЕТЕ, ТО ЭТО БУДЕТ НА ВАШЕЙ СОВЕСТИ.
+// ПОЭТОМУ ЕСЛИ НЕ УВЕРЕНЫ 100%, ЛУЧШЕ ВООБЩЕ НЕ ТРОГАТЬ СЕЙ БЛОК
+
+
+procedure Main();
+var
+	i : Cardinal;
+begin
+  i := 1;
+  script_start:
+  engine.print('script_start',8388736);
+  while (Status <> lsOnline) do delay(1111);
+  delay(start_delay*1000);  
+
+  Engine.CancelTarget;
+  check_lvl();
+	set_coord();
+	set_fight_skills(); 	
+	if (selling_active) then ItemsNotToSell_length:= SetItemsNotToSell(); 
+	if (storing_active) then ItemsToStore_length:= SetItemsToStore(); 
+	if (sending_active) then ItemsToSend_length:= SetItemsToSend();
+	if (use_items_to_buff) then items_to_buff_length:= set_buff_items();
+  
+  //Script.NewThread(@chat_answer);
+  Script.NewThread(@check_GM);
+  Script.NewThread(@check_death);
+  Script.NewThread(@check_sticking);
+  Script.NewThread(@check_disconnect);
+  Script.NewThread(@change_not_valid_target);
+  
+	Init(); 
+  Autoloot:= false; 
+	
+	while true do // Запускаем бесконечный цикл
+	begin
+	  while (Status <> lsOnline) do delay(1111);
+		if (Status = lsOnline) then  // Пока персонаж в игре
+		begin
+		 //script.newthread(@xxx);
+		  choose_bot_state:
+			if ((User.Dead) or (User.hp = 0)) and (Status = lsOnline) then bot_state := 6; // Если мервы, то переводим автомат в состояние 6 (воскрешение)
+					
+			case bot_state of // Делаем то, что нужно, в зависимости от того, в каком состоянии детерминированный конечный автомат (ДКА)
+			
+			1: { состояние ДКА: фарм }
+			begin
+			  mob_ignoring := GetTickCount + time_to_ignore_mob*1000; // Засекаем отрезок времени в указанное кол-во секунд
+				engine.print('Фармим',32768);
+				
+   	 {1}while (not User.Dead) do
+				begin
+				  //delay(111);
+				  return_to_spot_centr(); { возврат в центр спота}
+					Heal_by_skills_in_fight(); { хил скилами }
+					Heal_by_potions_in_fight(); { хил зельями }
+					if (use_items_to_buff) then buff_by_items(); { баф едой\свитками }
+				  gm_flag_2_logout();
+				  check_bot_state();
+				  
+       {2}if (not Mob.Valid) or (Mob.Dead) or ((mob = ignored_mob) and (Mob.Target <> User)) then
+					begin
+						Mob := GetBestMob();
+						mob_ignoring := GetTickCount + time_to_ignore_mob*1000; // Засекаем отрезок времени в указанное кол-во секунд
+						//if (debug_logs) {and TimerEx(dl1,1000)} then engine.print('ДКА_1: _{ выбираю моба \ обнуляю флаги \ засекаю таймер }',16711935);
+						first_time_flag := true;
+            return_to_spot_centr();
+            check_bot_state();
+            gm_flag_2_logout();
+            
+			 	 {3}if (Mob.target <> user) and (Mob.Valid) then  // Если моб доступен и не держит нас в таргете
+						begin
+						  //if (debug_logs) then engine.print('ДКА_1: _{ регены \ бафы \ хил \ кошельки }',16711935);
+						  Heal_by_skills_in_fight(); { хил скилами }
+						 	music_regen();  { музыкальный хил }
+							Check_buffs();  { бафы }
+              if (wallet_open) then Open_wallets(); { открывание кошельков } 
+						  if (north_armour_open) then Open_north_armour(); { открывание северного шмота }
+						  if (hlam_delete) then Delete_drop();  { удаление хлама }
+						  if (decomposition_equip) then Decomposition_for_akhium(); { разбиение на акхиум }
+						  return_to_spot_centr();
+						  check_bot_state();
+              check_lvl();
+						  check_spot();
+						  check_NeedInTown();
+						  enemy:= search_pvp();  							  						
+						  Mob:= GetBestMob(); 
+						end;{/3}
+			 	 end;{/2}  							  		 
+					
+					{бой} 
+					if (pvp_module) and (enemy = nil) then search_pvp();
+          if (pvp_module) and (enemy <> nil) and  Engine.SetTarget(enemy) then Engine.TurnTo(User.Target, 3);
+					
+					if (enemy = nil) and (User.Target <> Mob) and (User.Cast.EndTime = 0) then  // Если наша цель не моб и мы ничего не кастуем тогда
+					  if Engine.SetTarget(Mob) then Engine.TurnTo(User.Target, 3);  // Если взяли в таргет моба тогда поворачиваемся к нему
+					
+					if (User.Target <> nil) and     // Если цель есть
+					(User.Target.Valid) and
+					(not User.Target.Dead) and    // Она живая
+					(User.GlobalCoolDown = 0) and // ГКД откатился
+					(User.Cast.EndTime = 0) and   // Ничего не кастуем 
+					((User.Target.HP = 100) or ((User.Target.HP <> 100) and (User.Target.Target = User)) or (User.Target.Target <> nil)) then begin
+					  if (first_time_flag) then begin   // Если атакуем цель первый раз
+					    { first_actions }
+					    first_time_flag:= false; // Помечаем, что уже начали атаковать ее 					    
+					    if (first_attack_mode) then begin // Если активирована первая атака, то 							    
+					      while (User.DistTo(user.target) >= first_attack_range) and (User.DistTo(user.target) < 333) do begin  // Пока расстояние до моба > чем максимальная дистанция у первой атаки                
+					        check_bot_state();
+					        inc(dmtfa);
+					        if (dmtfa > round(time_to_ignore_mob*7)) then begin
+					          engine.stopmove;
+					          delay(555);
+					          Engine.movetotarget(first_attack_range-1);
+					        end;
+					        if (dmtfa > round(time_to_ignore_mob*9)) then begin
+					          dmtfa:= 0;
+					          if (debug_logs) then engine.print('Не могу подбежать к цели для первой атаки: '+user.target.name+' (дистанция: '+ftostr(user.distto(mobs(i)))+' m, HP: '+inttostr(mobs(i).hp)+')',8388608);
+					          ignored_mob:= Mob;
+					          delay(111);
+					          Mob := nil;
+					          engine.stopmove;
+					          engine.canceltarget;
+					          mob := getbestmob();
+					          goto choose_bot_state;
+					        end;
+					        if (debug_logs) and timerex(dl8,1000) then engine.print('ДКА_1: _{ бой } _подбегаю для первой атаки ('+inttostr(first_attack_range)+' m) к: '+user.target.name+' (дистанция: '+ftostr(user.distto({Mob}user.target))+' m)',16711935);
+					        if (fight_type_melee) then bow_attack();
+					        Engine.DMoveTo(User.Target.X, User.Target.Y, User.Target.Z);  // Начинаем двигаться в ее направлении
+					        engine.delay(111);
+					        check_bot_state();
+					        gm_flag_2_logout();
+					      end;
+					      Engine.StopMove;
+					      dmtfa:= 0;
+					      attack_first_skill(); // Используем первую атаку
+					    end;
+					    while (User.DistTo(user.target) > range_attack) and (User.DistTo(user.target) < 333) do begin // Пока расстояние до моба > чем радиус боя  							    
+					      inc(dmtra);
+					      if (dmtra > round(time_to_ignore_mob*7)) then begin
+					        engine.stopmove;
+					        delay(555);
+					        Engine.movetotarget(range_attack-1);
+					      end;
+					      if (dmtra > round(time_to_ignore_mob*9)) then begin
+					        dmtra:= 0;
+					        if (debug_logs) then engine.print('Не могу подбежать к цели на радиус атаки: '+user.target.name+' (дистанция: '+ftostr(user.distto(mobs(i)))+' m, HP: '+inttostr(mobs(i).hp)+')',8388608);
+					        ignored_mob:= Mob;
+					        delay(111);
+					        Mob := nil;
+					        engine.stopmove;
+					        engine.canceltarget;
+					        mob := getbestmob();
+					        goto choose_bot_state;
+					      end;
+					      if (debug_logs) and timerex(dl9,1000) then engine.print('ДКА_1: _{ бой } _подбегаю на радиус атаки ('+inttostr(range_attack)+' m) к: '+user.target.name+' (дистанция: '+ftostr(user.distto({Mob}user.target))+' m)',16711935);
+					      if (fight_type_melee) then rush_skills();  { скилы для сближения с целью }
+					      if (fight_type_melee) then bow_attack();
+					      Engine.DMoveTo(User.Target.X, User.Target.Y, User.Target.Z);  // Начинаем двигаться в ее направлении
+					      delay(111);
+					      check_bot_state();
+					      gm_flag_2_logout();
+					    end;
+					    dmtra:= 0;
+					  end; { /first_actions }
+               
+					  while (not user.target.dead) and delay(55) do begin 						
+					    while (User.GlobalCoolDown <> 0) and (user.cast.endtime <> 0) do delay(111);
+            
+					    if (mob.target <> nil) and (mob.target <> user) then engine.canceltarget;
+					    if (mob = nil) then mob:= getbestmob();
+					    if (user.target <> nil) and (User.DistTo(user.target) < 44) then Engine.TurnTo(User.Target, 3);
+					    //if (debug_logs) then engine.print('ДКА_1: _{ бой }',16711935);
+            
+					    if (fight_type_range) then fight_stances(); { магический квадрат и стойка лучника }
+					    heal_by_skills_in_fight();  { хил в бою }
+					    ultimate_skills();  { кратковременные бафы\усиления } 
+					    hardcode_skills();  { захардкоженные скилы }
+					    option_skills();  { настраиваемые скилы }
+					    main_dps_skills();  { скилы, наносящие основной дамаг }
+					    if (user.target.dead) or (user.target.curhp = 0) then begin
+					    //////////////////
+					      //Engine.DMoveTo(User.Target.X, User.Target.Y, User.Target.Z);  // Начинаем двигаться в ее направлении
+					     // delay(555);
+					      ////////////////
+					      pick_up_loot();
+                enemy:= nil;
+                mob:= nil;
+                engine.canceltarget;
+              end;
+              gm_flag_2_logout();
+              check_bot_state();
+            end;
+              
+					  end;
+				end;{/1}
+				
+				if (needintown_flag) and (not User.Dead) then bot_state := 9
+				else bot_state := 6;
+			end;
+			
+			2: { состояние ДКА: оглядываемся, выбираем: город/фарм }
+			begin
+			  engine.print('Выбираю куда бежать? В город или на спот?',32768);			  
+				for i:=1 to resp_coord_l do // Проверяем в цикле от 1 до кол-ва описанных точек респа
+				begin
+					if (User.DistTo(c_Nui[i,1], c_Nui[i,2], c_Nui[i,3]) < 15 ) then  // Если мы близко к i-той статуи Нуи, то
+					begin
+						resp_index := i;  // Запоминаем номер респа
+						Break;  // Выходим из цикла
+					end;			
+				end;
+				if (resp_index = 0) then  // Если номер респа остался равен 0, то
+				begin
+					bot_state := 7; // Переводим автомат в состояние 7 (см. ниже)
+					Continue;
+				end;
+					
+				if (NeedInTown() = true) then  bot_state := 3 // Если проверка "нужно ли в города?" выдала истину, то переходим в состояние 3 (бежим с респа сначала в город)
+				else bot_state := 5;  // В противном случае переходим в состояние 5 (бежим с респа сразу на спот)
+			end;
+			
+			3: { состояние ДКА: бежим в город c респа }
+			begin
+			  engine.print('Бегу в город от стутуи Нуи',32768);
+				RunToTownFromResp();  // Вызываем процедуру бега от респа до города
+				bot_state := 4;
+			end;
+			
+			4: { состояние ДКА: торгуем, чинимся, почта, склад }
+			begin
+			  block_cnvt:= true;
+				if (selling_active) then // Если функция продажи хлама включена, то
+				begin
+					Engine.MoveTo(c_Smith_x, c_Smith_y, c_Smith_z); // Подбегаем к кузнецу
+					Selling();  // Продаем (отдельная функция)
+				end; 
+				
+				if (buy_moonstone) then // Если функция покупки камней включена, то
+				begin
+					Engine.MoveTo(c_Smith_x, c_Smith_y, c_Smith_z); // Подбегаем к кузнецу
+					buying_moonstones();  // Покупаем (отдельная функция)
+				end;
+				
+				if (repairing_active) then // Если функция починки включена, то
+				begin
+					Engine.MoveTo(c_Smith_x, c_Smith_y, c_Smith_z); // Подбегаем к кузнецу
+					delay(1111);
+					engine.stopmove;
+					Engine.UseKey('G'); // Открываем диалоговое окно
+					delay(1111);
+					if (not repair_all) then begin
+					  for r:= 0 to equips.count-1 do begin
+					    if (Equips(r).Durability < min_durability) and
+					    (length(Equips(r).Name) > 1) and
+					    (equips(r).name <> 'fe_m_face00') and
+					    (equips(r).slot <> 8) then begin
+					    print('Нужно починить: '+Equips(r).Name);
+					    if engine.RepairArmor(equips(r)) then engine.print('Починил: '+Equips(r).Name,0)
+					    else engine.print('Не смог починить: '+Equips(r).Name,128);
+					    end;
+					  end;
+					end;
+					if (repair_all) then
+					  if (Engine.RepairAllArmor) then engine.print('Починился',32768) // Пробуем чиниться, если не удалось, то выводим в хистори
+					  else engine.print('Не смог починиться',128);
+				end;
+				
+				if (sending_active) then // Если функция отправки почты включена, то 
+				begin
+					Engine.MoveTo(c_Mail_x, c_Mail_y, c_Mail_z); // Подбегаем к почтовой сове
+					delay(1111);
+					Sending();  // Отправляем почту (отдельная функция)	
+				end;
+				
+				if (storing_active) then // Если функция складирования включена, то   
+				begin
+					Engine.MoveTo(c_WH_x, c_WH_y, c_WH_z);  // Подходим к ВХ
+					delay(1111);
+					Storing();  // Кладем на склад вещи (отдельная функция)
+				end;
+				
+			  block_cnvt:= false;
+				bot_state := 8; // После чего переводим автомат в 8ое состояние (см. ниже)
+			end;
+			
+			5: { состояние ДКА: бежим на спот с респа }
+			begin
+			  engine.print('Бегу на спот от статуи Нуи',32768);
+				RunToSpotFromResp();  // Вызываем функцию бега с респа до спота
+				bot_state :=  1;
+			end;
+			
+			6: { состояние ДКА: воскрешаемся }
+			begin
+			  engine.print('Умер... Воскрешаюсь',128);
+				while ((user.dead) or (user.hp = 0)) and (Status = lsOnline) do
+				begin
+        Engine.Resurrect;
+				delay(3333); // Пока не получается воскреснуть ждем и пробуем снова
+        end;
+        Mob := nil;
+				delay(tp_delay*1000);  // Задержка для прогрузки
+				if (User.bufftime(1128) <> 0) then engine.print('Предположительно смерть была от мобов',0)  // Если висит Слабость
+				else engine.print('Предположительно смерть была от игрока',0);
+				if (User.bufftime(1128) <> 0) then while (User.bufftime(1128) <> 0) do delay(555) // Если висит Слабость, то ждем пока она не спадет
+			 	else delay(resurrect_delay * 1000); // Иначе ждем то время, которое указано в настройках (при смерти от других игроков)
+			 	delay(555);
+			 	if (prayer_mode) and (user.curLP >= prayer_LP) and (User.level <> 55) then
+			 	begin
+			 	  engine.print('Молимся',128);
+			 	  Engine.MoveToObj(npcs.getnear('Жрица Нуи'), 2);
+          delay(999);
+          engine.usedoodadskill(17063, npcs.getnear('Жрица Нуи'));
+          while (user.cast.endtime <> 0 ) do delay(999);
+          delay(999);
+			 	end;
+			 	engine.dmoveto(user.x+random(5)-2,user.y+random(5)-2,user.z);
+			 	delay(555);
+			 	if (cancel_suspected) and (user.bufftime(4861) <> 0) then cancel_suspected_user();
+				bot_state := 2; // Переводим автомат в состояние 2 (см. выше) 
+			end;
+			
+			7: { состояние ДКА: неизвестное месторасположение }
+			begin
+				engine.print('Не могу определить свое месторасположение...',32768);
+				if (teleport_mode) then
+        begin                                                                                              
+          if (needintown()) then 
+          begin
+            block_sticking_flag:= true;
+            engine.print('Нужно в город, так что телепортируюсь к кузнецу... (отсчет '+inttostr(delay_between_tp)+' сек',8421504);
+            delay(delay_between_tp*1000);
+            //engine.teleport(c_Smith_x, c_Smith_y, c_Smith_z+2);  // Если активирована функция ТП, то делаем ТП в город (к кузнецу)
+            delay(tp_delay*1000);
+            block_sticking_flag:= false;
+          end
+          else
+          begin
+            block_sticking_flag:= true;              
+            engine.print('В город не нужно, так что телепортируюсь на спот... (отсчет '+inttostr(delay_between_tp)+' сек',8421504);
+            PathToSpotFromAnywhere();
+            block_sticking_flag:= false;
+          end
+        end
+				else
+				begin
+					Skills.ByID(10594, skill_temp); // Иначе проверяем доступность скила Путевые заметки
+					while (skill_temp.EndTime <> 0) do delay(500);  // Пока скил в откате ждем
+					engine.print('Так что использую путевые заметки...',8421504);
+					Engine.StopMove;  // Останавливаемся на всякий случай
+					if Engine.UseSkill(skill_temp.ID) then while (User.cast.endtime <> 0) do delay(100);  // Если кастуем начался, то пока полоска каста не равно 0, ждем
+					delay(tp_delay*1000);  // Дополнительное время на прорисовку ( на всякий случай)
+				end;
+				bot_state := 8; // Теперь переводим автомат в состояние 8 (см. ниже)
+				continue;
+			end;
+			
+			8: { состояние ДКА: бежим на спот с города }
+			begin
+			  engine.print('Бежим на спот из города',32768);
+				RunToSpotFromTown();  // Вызываем функцию бега из города на спот
+				delay(555);
+				bot_state :=  1;  // Теперь переводим автомат в состояние фарма
+			end;
+			
+			9: { состояние ДКА: бежим в город со спота }
+			begin
+			  engine.print('Бежим в город со спота',32768);
+				RunToTownFromSpot();  // Вызываем функцию бега со спота в город
+				delay(555);
+				bot_state :=  4;  // Теперь переводим автомат в состояние 4 (городские функции)
+			end;
+			end;	
+		end;    
+  
+end;
+end;
+
+
+end.
